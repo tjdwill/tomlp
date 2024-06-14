@@ -1,6 +1,46 @@
-# Tj's TOML Parser Journal
+# Tj's TOML Parser Journal 
 
 This is a journal for the purpose of tracking the progress for the TOML parser I aim to build in Rust.
+
+## 13 June 2024
+
+```rust
+fn main() {
+    let mut x: Vec<Token> = Vec::new(); 
+    x.push(Token { value: Box::new(1.5), token_type: TokenTypes::Float});
+    x.push(Token { value: Box::new("String".to_string()), token_type: TokenTypes::String});
+
+    let y = Vec::from_iter(x.iter().map(|k| -> &Box<dyn Debug> { &k.value }));
+    //x.push(Token{ value: Box::new(y), token_type: TokenTypes::Array });
+    println!("{:?}, {:?}", x, y);
+}
+
+// Every TOML data type may be represented as a type that implements Debug
+// tuple, HashMap, ints, floats, String, and even chrono::DateTime<Tz> if I use that.
+use std::fmt::Debug;
+
+#[derive(Debug)]
+struct Token {
+    value: Box<dyn Debug>,
+    token_type: TokenTypes,
+}
+
+#[derive(Debug)]
+enum TokenTypes {
+    // Examples
+    Float,
+    String,
+    Array,
+    // ...
+}
+```
+
+## 12 June 2024
+
+Today, I struggled with heterogeneity in Rust. Since TOML has the array type that can store homogeneous data, I need something that can turn into a Rust `tuple` in order to represent heterogeneously-typed data. Some ideas are:
+
+- Dynamic dispatch via `&dyn Trait` 
+- An enum with many variants (unwieldy).
 
 ## 11 June 2024
 
