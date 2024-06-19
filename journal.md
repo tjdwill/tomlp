@@ -2,6 +2,28 @@
 
 This is a journal for the purpose of tracking the progress for the TOML parser I aim to build in Rust.
 
+## 18 June 2024
+
+I've been thinking of changing how I parse the TOML file. Since TOML is delimited by newline, it makes sense to parse by line, building up the overall hash map throughout the program. The only concern I have so far is how to handle multi-line strings.
+
+I think I should begin thinking of parsing/lexing in terms of contexts. Meaning, depending on what I am attempting to generate, the interpretation of the input varies.
+
+### Testing skipping whitespace
+
+Whitespace is allowed in various places in the TOML format for aesthetic reasons, meaning it must be skipped. The problem is that if I'm iterating using an iterator, I can't find the first non-whitespace character without consuming it. 
+
+That is, until I found the `peek` method on iterators. Today's goal is to learn how to skip whitespace via an iterator using `peek`.
+
+### Results
+
+I was able to get a working implementation of skipping whitespace and processing TOML comments. As it turns out, I have not needed `peek` yet.
+
+In terms of design, I've created a struct that has the necessary context involved in parsing TOML. This includes fields for line number, cursor position, the current line, etc. I figured a single object is easier to pass around than multiple objects. 
+
+However, I'm beginning to think the current struct will just be the entire parser. In my head, I was going to implement the parser as a series of functions that take a mutable reference to a context object. However, said functions may as well just be methods on the object itself.
+
+What I'm learning is that while planning is important, implementation will result in numerous redesigns, especially when dealing with quirks of the implementation language.
+
 ## 13 June 2024
 
 ```rust
@@ -10,9 +32,9 @@ fn main() {
     x.push(Token { value: Box::new(1.5), token_type: TokenTypes::Float});
     x.push(Token { value: Box::new("String".to_string()), token_type: TokenTypes::String});
 
-    let y = Vec::from_iter(x.iter().map(|k| -> &Box<dyn Debug> { &k.value }));
-    //x.push(Token{ value: Box::new(y), token_type: TokenTypes::Array });
-    println!("{:?}, {:?}", x, y);
+    let y = Vec::from_iter(x.iter_mut().map(|k| -> Box<dyn Debug> { k.get_val() }));  // This results in a tuple!
+    x.push(Token{ value: Box::new(y), token_type: TokenTypes::Array });  // in reality, I'd drain the elements that I modified replacing it with the tuple.
+    println!("{:?}", x);
 }
 
 // Every TOML data type may be represented as a type that implements Debug
@@ -23,6 +45,14 @@ use std::fmt::Debug;
 struct Token {
     value: Box<dyn Debug>,
     token_type: TokenTypes,
+}
+
+impl Token {
+    /// move the current value out, replacing it with some default.
+    fn get_val(&mut self) -> Box<dyn Debug> {
+        use std::mem;
+        mem::replace(&mut self.value, Box::new("replaced"))
+    }
 }
 
 #[derive(Debug)]
