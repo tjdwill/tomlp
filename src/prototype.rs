@@ -22,12 +22,12 @@ use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
 // Implementation
 /////////////////
 
-fn parse(file_path: &str) -> Result<HashMap<String, TokenType>, String> {
+fn parse(file_path: &str) -> Result<HashMap<String, TOMLType>, String> {
     Ok(HashMap::new())
 }
 
 
-type TOMLTable = HashMap<String, TokenType>;
+type TOMLTable = HashMap<String, TOMLType>;
 #[derive(Debug)]
 struct TOMLParser {
     tomltable: TOMLTable,
@@ -48,6 +48,36 @@ impl TOMLParser {
             Err("Unknown file path error.".to_string())
         }
     }
+
+    fn process_comment(&mut self) -> Result<(), String> {
+        let graphemes = self.context.get_graphemes();
+        match graphemes
+            .iter()
+            .skip(self.context.cursor)
+            .find(|x| invalid_comment_char(x))
+        {
+            Some(item) => Err(format!(
+                "Found invalid comment input: '{}' on line {}.",
+                item, self.context.line_num
+            )),
+            None => {
+                self.context.cursor = graphemes.len(); // at end of line
+                Ok(())
+            }
+        }
+    }
+
+    fn skip_leading_ws(&mut self) {
+        let mut skips = 0;
+        for c in self.context.get_graphemes() {
+            match c{
+                " " | "\t" => {skips += 1; continue}
+                _ => break
+            }
+        }
+        self.context.cursor += skips;
+    }
+
 }
 
 #[derive(Debug)]
@@ -103,8 +133,63 @@ impl ParseContext {
 }
 
 #[derive(Debug)]
-enum TokenType {}
+enum TOMLType {
+    // VALUES
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    // Strings
+    BasicStr(String),
+    MultStr(String),
+    LitStr(String),
+    MultLitStr(String),
+    // Dates
+    Date(NaiveDate),
+    Time(NaiveTime),
+    TimeStamp(DateTime<FixedOffset>),
+    // Collections
+    Array(Vec<Self>),
+    Table(HashMap<String, Self>),
+    InlineTable(HashMap<String, Self>),
+}
 
+///////////////
+// Helper Funcs
+///////////////
 fn get_graphemes(s: &str) -> Vec<&str> {
     utf8::graphemes(s, true).collect::<Vec<_>>()
+}
+
+fn invalid_comment_char(s: &str) -> bool {
+    const CHARS: [&str; 32] = [
+        "\0", "\u{1}", "\u{2}", "\u{3}", "\u{4}", "\u{5}", "\u{6}", "\u{7}", "\u{8}", "\n",
+        "\u{b}", "\u{c}", "\r", "\u{e}", "\u{f}", "\u{10}", "\u{11}", "\u{12}", "\u{13}",
+        "\u{14}", "\u{15}", "\u{16}", "\u{17}", "\u{18}", "\u{19}", "\u{1a}", "\u{1b}",
+        "\u{1c}", "\u{1d}", "\u{1e}", "\u{1f}", "\u{7f}",
+    ];
+
+    for c in CHARS {
+        if s == c {
+            return true;
+        }
+    }
+    false
+}
+/// Use this to instantiate an array of invalid chars via Copy/Paste.
+pub fn print_invalid_comment_chars() {
+    println!("Invalid TOML Comment Char Report");
+    let inval_string = get_invalid_comment_chars();
+    let invalids = get_graphemes(inval_string.as_str());
+    println!("Total Num of Invalids: {}", invalids.len());
+    println!("Invalid Comment Chars: {:?}\n", invalids);
+}
+
+fn get_invalid_comment_chars() -> String {
+    let range1 = 0_u8..=8_u8;
+    let range2 =
+        u8::from_str_radix("A", 16).unwrap()..=u8::from_str_radix("1F", 16).unwrap();
+    let range3 =
+        u8::from_str_radix("7F", 16).unwrap()..u8::from_str_radix("80", 16).unwrap();
+    let chars = range1.chain(range2.chain(range3)).collect::<Vec<u8>>();
+    String::from_utf8(chars).unwrap()
 }
