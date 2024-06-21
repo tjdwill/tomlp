@@ -1,11 +1,4 @@
 #![allow(dead_code, unused_imports)]
-fn main() -> Result<(), String> {
-    let s = "hello".to_string();
-    let vector = get_graphemes(s.as_str());
-    println!("{:?}", vector);
-    Ok(())
-}
-
 //////////
 // Imports
 //////////
@@ -15,7 +8,7 @@ use std::io::{prelude::*, BufReader};
 use std::fs::File;
 use std::path::Path;
 
-use unicode_segmentation::UnicodeSegmentation as utf8;
+use unicode_segmentation::{UnicodeSegmentation as utf8, Graphemes};
 use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
 
 /////////////////
@@ -29,13 +22,13 @@ fn parse(file_path: &str) -> Result<HashMap<String, TOMLType>, String> {
 
 type TOMLTable = HashMap<String, TOMLType>;
 #[derive(Debug)]
-struct TOMLParser {
+pub struct TOMLParser {
     tomltable: TOMLTable,
     // TODO: decide if table names are cached.
-    context: ParseContext,
+    pub context: ParseContext,
 }
 impl TOMLParser {
-    fn init(file_path: &str) -> Result<Self, String> {
+    pub fn init(file_path: &str) -> Result<Self, String> {
         // validate the file
         let path = Path::new(file_path);
         if let Some(ext) = path.extension() {
@@ -45,43 +38,45 @@ impl TOMLParser {
             let context = ParseContext::create(path)?;
             Ok(Self { tomltable: TOMLTable::new(), context: context })
         } else {
-            Err("Unknown file path error.".to_string())
+            Err(format!("Could not find extension for file {:?}.", path))
         }
     }
 
-    fn process_comment(&mut self) -> Result<(), String> {
-        let graphemes = self.context.get_graphemes();
-        match graphemes
-            .iter()
-            .skip(self.context.cursor)
-            .find(|x| invalid_comment_char(x))
+    pub fn fill_buffer(&mut self) -> Result<bool, String> {
+        self.context.fill_buffer()
+    }
+
+    pub fn process_comment(&mut self) -> Result<(), String> {
+        let mut graphemes = self.context.skipped_iter();
+        match graphemes.find(|x| invalid_comment_char(x))
         {
             Some(item) => Err(format!(
                 "Found invalid comment input: '{}' on line {}.",
                 item, self.context.line_num
             )),
             None => {
-                self.context.cursor = graphemes.len(); // at end of line
+                // TODO: Replace with assigning the curr_line string's length directly.
+                // One less iteration cycle per call.
+                self.context.cursor += self.context.skipped_iter().count(); // at end of line
                 Ok(())
             }
         }
     }
 
-    fn skip_leading_ws(&mut self) {
+    pub fn skip_leading_ws(&mut self) {
         let mut skips = 0;
-        for c in self.context.get_graphemes() {
-            match c{
+        for c in self.context.char_iter() {
+            match c {
                 " " | "\t" => {skips += 1; continue}
                 _ => break
             }
         }
         self.context.cursor += skips;
     }
-
 }
 
 #[derive(Debug)]
-struct ParseContext {
+pub struct ParseContext {
     line_num: usize,
     cursor: usize,
     curr_line: String,
@@ -108,26 +103,34 @@ impl ParseContext {
     
     /// Fills the current line buffer
     /// Returns a boolean Result to communicate if EOF has been reached.
-    /// EOF: Ok(true)
+    /// EOF: Ok(false)
     fn fill_buffer(&mut self) -> Result<bool, String> {
+        //assert!(self.cursor >= self.curr_line.len());
         self.curr_line.clear();
         self.line_num += 1;
         self.cursor = 0;
         match self.reader.read_line(&mut self.curr_line) {
             Err(err) => Err(format!("Read error on line {}: {}", self.line_num, err.kind())),
-            Ok(0) => Ok(true),
-            _ => Ok(false)
+            Ok(0) => Ok(false),
+            _ => {
+                self.curr_line.pop();  // get rid of the newline character
+                Ok(true)
+            }
         }
     }
 
     ////////
     // Utils
     ////////
-    fn get_graphemes(&self) -> Vec<&str> {
-        utf8::graphemes(self.curr_line.as_str(), true).collect::<Vec<&str>>()
+    pub fn char_iter(&self) -> Graphemes {
+        utf8::graphemes(self.curr_line.as_str(), true)
+    }
+
+    pub fn skipped_iter(&self) -> std::iter::Skip<Graphemes> {
+       self.char_iter().skip(self.cursor) 
     }
     
-    fn view_line(&self) -> &str {
+    pub fn view_line(&self) -> &str {
         self.curr_line.as_str()
     }
 }
@@ -156,9 +159,6 @@ enum TOMLType {
 ///////////////
 // Helper Funcs
 ///////////////
-fn get_graphemes(s: &str) -> Vec<&str> {
-    utf8::graphemes(s, true).collect::<Vec<_>>()
-}
 
 fn invalid_comment_char(s: &str) -> bool {
     const CHARS: [&str; 32] = [
@@ -174,6 +174,9 @@ fn invalid_comment_char(s: &str) -> bool {
         }
     }
     false
+}
+fn get_graphemes(s: &str) -> Vec<&str> {
+    utf8::graphemes(s, true).collect::<Vec<_>>()
 }
 /// Use this to instantiate an array of invalid chars via Copy/Paste.
 pub fn print_invalid_comment_chars() {
