@@ -1,11 +1,8 @@
+#![allow(dead_code, unused_imports)]
 fn main() -> Result<(), String> {
     let s = "hello".to_string();
     let vector = get_graphemes(s.as_str());
-    // Testing ownership
-    {
-        let temp = vector; // Taking ownership of value in vector. vec![1, 2, 3] should be dropped.
-    }
-    println!("{:?}", vector); // Panics?
+    println!("{:?}", vector);
     Ok(())
 }
 
@@ -13,6 +10,7 @@ fn main() -> Result<(), String> {
 // Imports
 //////////
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::{prelude::*, BufReader};
 use std::fs::File;
 use std::path::Path;
@@ -26,6 +24,30 @@ use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
 
 fn parse(file_path: &str) -> Result<HashMap<String, TokenType>, String> {
     Ok(HashMap::new())
+}
+
+
+type TOMLTable = HashMap<String, TokenType>;
+#[derive(Debug)]
+struct TOMLParser {
+    tomltable: TOMLTable,
+    // TODO: decide if table names are cached.
+    context: ParseContext,
+}
+impl TOMLParser {
+    fn init(file_path: &str) -> Result<Self, String> {
+        // validate the file
+        let path = Path::new(file_path);
+        if let Some(ext) = path.extension() {
+            if ext != "toml" {
+                return Err("Incorrect file extension.".to_string())
+            }
+            let context = ParseContext::create(path)?;
+            Ok(Self { tomltable: TOMLTable::new(), context: context })
+        } else {
+            Err("Unknown file path error.".to_string())
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -80,6 +102,7 @@ impl ParseContext {
     }
 }
 
+#[derive(Debug)]
 enum TokenType {}
 
 fn get_graphemes(s: &str) -> Vec<&str> {

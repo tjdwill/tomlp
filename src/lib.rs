@@ -1,5 +1,7 @@
 use unicode_segmentation::UnicodeSegmentation as utf8;
 
+mod prototype;
+
 mod toml {
     use super::utf8;
 /////////////////////
