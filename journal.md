@@ -2,6 +2,29 @@
 
 This is a journal for the purpose of tracking the progress for the TOML parser I aim to build in Rust.
 
+## 20 June 2024
+
+Still experimenting with the design of the program. Specifically, for the past few days, I've iterated on the representation of the UTF-8 graphemes. I fought the borrow checker valiantly, ultimately succumbing to the fact that my approach was incorrect.
+What I wanted was a struct that contained both a `String` representing the current line of the TOML file and a vector of graphemes:
+
+```rust
+struct ParseContext<'a> {
+    curr_line: String,
+    graphemes: Vec<'a>,
+    ...
+}
+```
+
+This is the incorrect approach because the lifetime of `ParseContext` depends on the lifetimes of the references in `graphemes` (which depend on curr_line, but I don't think the compiler knows that). Once graphemes is initialized for the first time, the references within can't be removed--the lifetime annotation promises the references will be valid for at least as long as the `ParseContext` lives.
+
+The only solution I tried to make this work resulted in the entire struct being borrowed for the duration of the lifetime, meaning I could not update it.
+
+### Solution
+
+I don't particularly enjoy the solution, but I've created a factory for the graphemes object. Every time the method is called, a vector of string slices is instantiated and returned to the caller. Since a new vector is created on each call, it will be faithful to updates to `curr_line`. What I find regrettable about this solution is that it results in memory allocation on each instantiation, which could result in considerable impediments to performance.
+
+This will likely be something I try to address as a post-mortem.
+
 ## 18 June 2024
 
 I've been thinking of changing how I parse the TOML file. Since TOML is delimited by newline, it makes sense to parse by line, building up the overall hash map throughout the program. The only concern I have so far is how to handle multi-line strings.
