@@ -2,6 +2,21 @@
 
 This is a journal for the purpose of tracking the progress for the TOML parser I aim to build in Rust.
 
+## Questions
+
+Here is a living list of questions I have about the design:
+
+- How am I going to parse tokens that require lookahead (i.e. array of tables' `[[` and `]]` delimiters)
+- How am I going to find comments at the end of values?
+    - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
+- How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
+
+## 21 June 2024
+
+Another redesign (of course). Instead of allocating a vector for each grapheme poll, I am now using the `unicode_segmentation::Grapheme` iterator instead. I learned that, yes, `Iterator`s do have `skip` and `peek` via *Provided Methods* on Traits.
+
+I created a simple test binary to test my work thus far. At the time of writing, I am able to properly load a TOML file, parse top-level comments, and print debug information.
+
 ## 20 June 2024
 
 Still experimenting with the design of the program. Specifically, for the past few days, I've iterated on the representation of the UTF-8 graphemes. I fought the borrow checker valiantly, ultimately succumbing to the fact that my approach was incorrect.

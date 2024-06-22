@@ -4,21 +4,24 @@
 //////////
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::io::{prelude::*, BufReader};
+use std::io::{ prelude::*, BufReader };
+use std::iter::{ Peekable, Skip};
 use std::fs::File;
 use std::path::Path;
 
 use unicode_segmentation::{UnicodeSegmentation as utf8, Graphemes};
 use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
 
+use constants::*;
 /////////////////
 // Implementation
 /////////////////
 
+/*
 fn parse(file_path: &str) -> Result<HashMap<String, TOMLType>, String> {
     Ok(HashMap::new())
 }
-
+*/
 
 type TOMLTable = HashMap<String, TOMLType>;
 #[derive(Debug)]
@@ -46,26 +49,69 @@ impl TOMLParser {
         self.context.fill_buffer()
     }
 
-    pub fn process_comment(&mut self) -> Result<(), String> {
-        let mut graphemes = self.context.skipped_iter();
-        match graphemes.find(|x| invalid_comment_char(x))
-        {
-            Some(item) => Err(format!(
-                "Found invalid comment input: '{}' on line {}.",
-                item, self.context.line_num
-            )),
-            None => {
-                // TODO: Replace with assigning the curr_line string's length directly.
-                // One less iteration cycle per call.
-                self.context.cursor += self.context.skipped_iter().count(); // at end of line
-                Ok(())
-            }
+    /////////////////
+    // Parsing Funcs 
+    /////////////////
+    
+    pub fn parse(&mut self) -> Result<TOMLTable, String> {
+        
+        while self.context.fill_buffer()? {
+
+            println!("{}", self.context.line_num);
         }
+
+        Ok(std::mem::replace(&mut self.tomltable, TOMLTable::new()))
+    }
+
+    /// Determine if the current top-level structure is a table declaration
+    /// basic table `[some table]` or array of tables `[[some table]]`
+    pub fn find_table(&mut self) -> Result<bool, String> {
+        unimplemented!()
+    }
+
+    pub fn process_table(&mut self) -> Result<bool, String> {
+        self.skip_leading_ws();
+        unimplemented!()
+    }
+
+    pub fn process_inline_table(&mut self) -> Result<bool, String> {
+        unimplemented!();
+    }
+
+    pub fn process_comment(&mut self) -> Result<bool, String> {
+        self.skip_leading_ws();
+        let mut graphemes = self.context.skipped_iter();
+        if let Some(&"#") = graphemes.peek() {
+            match graphemes.find(|x| invalid_comment_char(x))
+            {
+                Some(item) => Err(format!(
+                    "Found invalid comment input: '{}' on line {}.",
+                    item, self.context.line_num
+                )),
+                None => {
+                    // TODO: Replace with assigning the curr_line string's length directly.
+                    // One less iteration cycle per call.
+                    self.context.cursor += self.context.skipped_iter().count(); // at end of line
+                    Ok(true)
+                }
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn process_blankln(&mut self) -> bool {
+        let mut ret = false;
+        self.skip_leading_ws();
+        if self.context.skipped_iter().count() == 0 {
+            ret = true;
+        }
+        ret
     }
 
     pub fn skip_leading_ws(&mut self) {
         let mut skips = 0;
-        for c in self.context.char_iter() {
+        for c in self.context.skipped_iter() {
             match c {
                 " " | "\t" => {skips += 1; continue}
                 _ => break
@@ -126,8 +172,8 @@ impl ParseContext {
         utf8::graphemes(self.curr_line.as_str(), true)
     }
 
-    pub fn skipped_iter(&self) -> std::iter::Skip<Graphemes> {
-       self.char_iter().skip(self.cursor) 
+    pub fn skipped_iter(&self) -> Peekable<Skip<Graphemes>> {
+       self.char_iter().skip(self.cursor).peekable()
     }
     
     pub fn view_line(&self) -> &str {
@@ -136,7 +182,7 @@ impl ParseContext {
 }
 
 #[derive(Debug)]
-enum TOMLType {
+pub enum TOMLType {
     // VALUES
     Bool(bool),
     Int(i64),
@@ -154,6 +200,15 @@ enum TOMLType {
     Array(Vec<Self>),
     Table(HashMap<String, Self>),
     InlineTable(HashMap<String, Self>),
+}
+
+mod constants {
+    const COMMENT_TOKEN: &str = "#";
+    const TABLE_OPEN_TOKEN: &str = "[";
+    const TABLE_CLOSE_TOKEN: &str = "]";
+    const INLINE_OPENTABLE_TOKEN: &str = "{";
+    const INLINE_CLOSETABLE_TOKEN: &str = "}";
+    const SEQUENCE_DELIM: &str = ",";
 }
 
 ///////////////
@@ -196,3 +251,4 @@ fn get_invalid_comment_chars() -> String {
     let chars = range1.chain(range2.chain(range3)).collect::<Vec<u8>>();
     String::from_utf8(chars).unwrap()
 }
+
