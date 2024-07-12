@@ -4,7 +4,7 @@
 // Module Decs
 //////////////
 
-mod parserline;
+pub mod parserline;
 mod constants;
 
 //////////
@@ -56,7 +56,7 @@ impl TOMLParser {
     }
 
     pub fn fill_buffer(&mut self) -> Result<bool, String> {
-        self.context.fill_buffer()
+        self.context.fill_buffer(true)
     }
 
     /////////////////
@@ -65,7 +65,7 @@ impl TOMLParser {
     
     pub fn parse(&mut self) -> Result<TOMLTable, String> {
         
-        while self.context.fill_buffer()? {
+        while self.context.fill_buffer(false)? {
             if self.process_blankln() {
                 continue
             } else if self.process_comment()? {
@@ -155,7 +155,9 @@ impl ParseContext {
         let file = {
             match File::open(file_path) {
                 Ok(fd) => fd,
-                Err(err) => return Err(format!("File open error: {}. File: {:?}", err.kind(), file_path))
+                Err(err) => return Err(format!(
+                    "File open error: {}. File: {:?}", err.kind(), file_path
+                ))
             }
         };
         let reader = BufReader::new(file);
@@ -171,16 +173,20 @@ impl ParseContext {
     /// Fills the current line buffer
     /// Returns a boolean Result to communicate if EOF has been reached.
     /// EOF: Ok(false)
-    fn fill_buffer(&mut self) -> Result<bool, String> {
+    fn fill_buffer(&mut self, newline: bool) -> Result<bool, String> {
         //assert!(self.cursor >= self.curr_line.len());
         self.curr_line.clear();
         self.line_num += 1;
         self.cursor = 0;
         match self.reader.read_line(&mut self.curr_line) {
-            Err(err) => Err(format!("Read error on line {}: {}", self.line_num, err.kind())),
+            Err(err) => Err(format!(
+                "Read error on line {}: {}", self.line_num, err.kind()
+            )),
             Ok(0) => Ok(false),
             _ => {
-                self.curr_line.pop();  // get rid of the newline character
+                if !newline {
+                    self.curr_line.pop();  // get rid of the newline character
+                }
                 Ok(true)
             }
         }
@@ -263,4 +269,3 @@ fn get_invalid_comment_chars() -> String {
     let chars = range1.chain(range2.chain(range3)).collect::<Vec<u8>>();
     String::from_utf8(chars).unwrap()
 }
-

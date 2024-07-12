@@ -11,6 +11,12 @@ Here is a living list of questions I have about the design:
     - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
 - How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
 
+## 11 July 2024
+
+I've been creating drafts of various tooling needed for various parsing tasks. Such things include structs for tracking context, processing comments, and processing strings.
+
+In the process, I have become more comfortable with iterators, even being able to create one myself for a custom type. I still need to figure out the best way to structure the code such that the buffer and iterators are cleanly organized.
+
 ## 21 June 2024
 
 Another redesign (of course). Instead of allocating a vector for each grapheme poll, I am now using the `unicode_segmentation::Grapheme` iterator instead. I learned that, yes, `Iterator`s do have `skip` and `peek` via *Provided Methods* on Traits.
@@ -140,6 +146,7 @@ The most important development was step 1. Strings need to be found first becaus
 
 I propose three components. First, we have the outer lexer. This component is responsible for processing the input and generating tokens for the bin. However, there will be cases in which some "inner" workers need to produce the token. These inner workers are those such as the string delimiter tokens. The idea is to pass a mutable reference to the token bin as well as a shared reference to the remaining input vector slice to find the correct token via lookahead. Within this process, a function is called to find the relevant substring for proper tokenization.
 
+```
 +---------------------------------------------------+
 | Lexer                                             |
 |       +-------------------------------------------|
@@ -154,7 +161,7 @@ I propose three components. First, we have the outer lexer. This component is re
 |       |  +----------------------------------------|
 |       +-------------------------------------------|
 +---------------------------------------------------+
-
+```
 
 ## 22 May 2024
 
@@ -175,7 +182,7 @@ As a design aid, I am allowing myself to load the entire source file into memory
 3. Base Grammar -> High-Level Tokens (TOML Tokens?)
     - These tokens are the upper-level, more abstracted tokens intended to be processed by the parser directly. These would include concepts such as keys, values, key-value pairs, Table headers, etc.)
     - Still ironing this level out
-
+```
     +------------------+
     |                  | 
     |  Raw Text File   | 
@@ -208,7 +215,7 @@ As a design aid, I am allowing myself to load the entire source file into memory
     |    TOML Token    | 
     |                  | 
     +------------------+
-
+```
 
 That's the tentative plan in terms of lexing. The token level of a given TOML constitutional construct may change. 
 

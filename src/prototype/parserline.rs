@@ -1,3 +1,4 @@
+use crate::prototype::constants;
 use std::iter::{Peekable, Skip, Take};
 use unicode_segmentation::{Graphemes, UnicodeSegmentation as utf8};
 
@@ -14,11 +15,16 @@ pub struct ParserLine {
 impl ParserLine {
     pub fn new() -> Self {
         ParserLine {
-            line: String::with_capacity(100 * 4),
+            line: String::with_capacity(100 * 5),
             segment_delims: Vec::new(),
         }
     }
-
+    pub fn from(input: &str) -> Self {
+        ParserLine {
+            line: input.to_string(),
+            segment_delims: Vec::new(),
+        }
+    }
     /// Results in an iterator over grapheme clusters
     pub fn graphemes(&self) -> Graphemes {
         utf8::graphemes(self.line.as_str(), true)
@@ -35,24 +41,40 @@ impl ParserLine {
     }
 }
 
-trait TOMLSegments {
+/// A trait that supports segmenting a given line into semantic TOML regions. For example,
+/// given a line such as
+///     some_key = value # comment
+/// the function should provide cursor values such that the line is portioned as:
+///     |some_key |=| value |# comment|
+/// The idea is that segmenting the line will allow for easier parsing by enabling
+/// determination of a given TOML semantic block.
+pub trait TOMLSegments {
     fn find_segments(&mut self);
 }
 
 impl TOMLSegments for ParserLine {
     fn find_segments(&mut self) {
+        use constants::*;
         let graphs = self.graphemes();
-        let mut segments: Vec<usize> = vec![0];
+        let mut segments: Vec<usize> = vec![];
         for (i, ch) in graphs.enumerate() {
             match ch {
-                "#" | "[" | "]" | "{" | "}" | "\"" | "'" => {
+                COMMENT_TOKEN
+                | TABLE_OPEN_TOKEN
+                | TABLE_CLOSE_TOKEN
+                | INLINE_OPENTABLE_TOKEN
+                | INLINE_CLOSETABLE_TOKEN => {
                     segments.push(i);
                 }
                 "=" => {
                     segments.push(i);
                     segments.push(i + 1);
                 }
-                _ => (),
+                _ => {
+                    if i == 0 {
+                        segments.push(i);
+                    }
+                }
             }
         }
         segments.push(self.line.len());
@@ -60,24 +82,31 @@ impl TOMLSegments for ParserLine {
     }
 }
 
-pub struct PLIterator<'a>{
+impl<'a> IntoIterator for &'a ParserLine {
+    type Item = Peekable<Skip<Take<Graphemes<'a>>>>;
+    type IntoIter = PLIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        PLIterator::new(self)
+    }
+}
+
+pub struct PLIterator<'a> {
     curr_delim_num: usize,
     limit: usize,
-    pline: &'a ParserLine
+    pline: &'a ParserLine,
 }
 
 impl<'a> PLIterator<'a> {
     fn new(pline: &'a ParserLine) -> Self {
         use std::cmp;
-        let limit: usize = cmp::max(pline.seg_delims().len()-1, 0);
+        let limit: usize = cmp::max(pline.seg_delims().len() - 1, 0);
         Self {
             curr_delim_num: 0,
             limit,
-            pline
+            pline,
         }
     }
 }
-
 
 impl<'a> Iterator for PLIterator<'a> {
     type Item = Peekable<Skip<Take<Graphemes<'a>>>>;
