@@ -11,6 +11,20 @@ Here is a living list of questions I have about the design:
     - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
 - How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
 
+## 16 July 2024
+
+Still working on how to represent the data mid-parsing. After many redesigns--including a venture into creating an iterator object (which did compile, by the way)--the current design has three entities:
+
+- `TOMLParser` - the struct that stores the reader, buffer, and the current line number
+- `ParserLine` - a struct that serves as a manual iterator over the current line.
+    - Currently, I've decided to make this *practically* an iterator, meaning it doesn't officially implement the trait. This is because I couldn't understand how to get the signature working. Instead, `peek` and `next` (`next_seg` in the `impl`), are regular struct methods.
+- `TOMLSeg<'a>` - an alias to a `Peekable<Skip<Take<Graphemes<'a>>>> ` object. This is an iterator over the line's graphemes that represent a TOML-semantic unit. 
+    - For example, given a line `key = value #comment\n`, a segment would be an iterator over `#comment\n`. This, in theory, helps with keeping the parsing "clean".
+
+**NOTE**: if possible, I would really enjoy having a means of passing a `TOMLSeg<'a>` through multiple functions as needed.
+
+The time spent on this aspect of the program, while sizeable, has been invaluable for gaining familiarity with lifetimes, referencing rules, and augmenting my understanding of how Rust works. One such example is the use of recursive functions instead of updating important variables in a loop. Passing ownership into a new function call proved to be easier.
+
 ## 11 July 2024
 
 I've been creating drafts of various tooling needed for various parsing tasks. Such things include structs for tracking context, processing comments, and processing strings.
