@@ -6,13 +6,11 @@ fn skip_ws(mut seg: TOMLSeg<'_>) -> TOMLSeg<'_> {
         if is_whitespace(seg.peek()) {
             seg.next();
         } else {
-            break
+            break;
         }
     }
     seg
 }
-
-
 
 fn process_basic_escape_sequence(iter: &mut TOMLSeg<'_>) -> Option<char> {
     // Assume we have identified a backslash

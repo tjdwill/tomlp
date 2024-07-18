@@ -11,7 +11,8 @@ fn main() -> Result<(), String> {
             println!("Found Comment!\n");
         };
         println!(
-            "Graphemes: {:?}", parser.context.skipped_iter().collect::<Vec<&str>>()
+            "Graphemes: {:?}",
+            parser.context.skipped_iter().collect::<Vec<&str>>()
         );
         println!("Parser Object:\n\t{:?}\n", parser);
     }

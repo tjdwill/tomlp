@@ -3,10 +3,9 @@ fn main() {
     tests::main();
 }
 
- 
 pub mod tomlparse {
     use super::*;
-    static EOF_ERROR: &str = "End of File during parsing operation."; 
+    static EOF_ERROR: &str = "End of File during parsing operation.";
 
     #[derive(Debug)]
     pub struct TOMLParser {
@@ -35,10 +34,10 @@ pub mod tomlparse {
             match test.extension() {
                 Some(ext) => {
                     if !test.exists() {
-                        return Err("File does not exist.".to_string())
+                        return Err("File does not exist.".to_string());
                     } else if ext != toml_ext {
-                        return Err("Incorrect file extension.".to_string())
-                    } else{
+                        return Err("Incorrect file extension.".to_string());
+                    } else {
                     }
                 }
                 None => return Err("Incorrect file extension.".to_string()),
@@ -74,7 +73,7 @@ pub mod tomlparse {
         fn gen_pline(&self) -> ParserLine {
             ParserLine::new(self.buffer.clone(), self.line_num)
         }
-        
+
         ////////////////////
         // Parsing Functions
         ////////////////////
@@ -85,13 +84,16 @@ pub mod tomlparse {
         /// which would likely require this signature to change to return &'static str OR pass
         /// the String structure in directly to push the slice to it.
         /// This function is for DRAFTING purposes ONLY. The signature will be different in the implementation.
-        pub fn process_multi_escape_sequence(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
+        pub fn process_multi_escape_sequence(
+            &mut self,
+            mut pline: ParserLine,
+        ) -> Result<(char, ParserLine), String> {
             // TODO: Check logic for this function
             // Assume we have identified a backslash
             let mut seg = {
                 match pline.next_seg() {
                     Some(next_seg) => next_seg,
-                    None => return Err(String::from(EOF_ERROR))  // only condition in which a \ is followed by nothing.
+                    None => return Err(String::from(EOF_ERROR)), // only condition in which a \ is followed by nothing.
                 }
             };
             // from here, we *know* there is at least one character left to read.
@@ -126,10 +128,13 @@ pub mod tomlparse {
                 }
             }
             let count = seg.count();
-            return Ok((outchar, ParserLine::continuation(pline, count)))
+            return Ok((outchar, ParserLine::continuation(pline, count)));
         }
 
-        pub fn get_nonwhitespace(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
+        pub fn get_nonwhitespace(
+            &mut self,
+            mut pline: ParserLine,
+        ) -> Result<(char, ParserLine), String> {
             // The last line may have ended if the whitespace character was a newline, so
             // the next line is obtained in that instance.
             let mut seg = {
@@ -137,9 +142,9 @@ pub mod tomlparse {
                     Some(next_seg) => next_seg,
                     None => {
                         if !self.next_line()? {
-                            return Err(String::from(EOF_ERROR))
+                            return Err(String::from(EOF_ERROR));
                         } else {
-                            return self.get_nonwhitespace(self.gen_pline())
+                            return self.get_nonwhitespace(self.gen_pline());
                         }
                     }
                 }
@@ -151,23 +156,24 @@ pub mod tomlparse {
                         let ch = ch.chars().next().unwrap();
                         if !ch.is_whitespace() {
                             let count = seg.count();
-                            return Ok((ch, ParserLine::continuation(pline, count)))
+                            return Ok((ch, ParserLine::continuation(pline, count)));
                         } else {
-                            continue
+                            continue;
                         }
                     }
-                    None => { 
+                    None => {
                         // try to get the next segment
                         match pline.next_seg() {
                             Some(next_seg) => {
                                 seg = next_seg;
-                                continue
+                                continue;
                             }
-                            None => {  // try to get the next line
+                            None => {
+                                // try to get the next line
                                 if !self.next_line()? {
-                                    return Err(String::from(EOF_ERROR))
+                                    return Err(String::from(EOF_ERROR));
                                 } else {
-                                    return self.get_nonwhitespace(self.gen_pline())
+                                    return self.get_nonwhitespace(self.gen_pline());
                                 }
                             }
                         }
@@ -180,10 +186,10 @@ pub mod tomlparse {
             // try to find 4 or 8 hexadecimal digits
             const MIN_SEQ_LENGTH: i32 = 4;
             const MAX_SEQ_LENGTH: i32 = 8;
-        
+
             let mut hex_val = 0_u32;
             let mut digits_processed = 0;
-        
+
             while digits_processed < MAX_SEQ_LENGTH {
                 if Self::is_hexdigit(iter.peek()) {
                     let digit = iter.next().unwrap();
@@ -195,10 +201,10 @@ pub mod tomlparse {
                 }
                 digits_processed += 1;
             }
-        
+
             std::char::from_u32(hex_val)
         }
-        
+
         /// determines if the next entry of a UTF8Peek Iterator is a hexadecimal value
         fn is_hexdigit(query: Option<&&str>) -> bool {
             match query {
@@ -285,10 +291,10 @@ pub struct ParserLine {
     pub line_num: usize,
     data: String,
     // iteration things
-    seg_nums: Vec<usize>,  // a vector of what is essentially cursor positions to denote segment ranges.
-    iter_limit: usize,  // The iteration termination value
+    seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
+    iter_limit: usize,    // The iteration termination value
     curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
-    remaining_graphemes: usize,  // a tracker for reproducing a given segment with some offset. 
+    remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
 }
 impl ParserLine {
     pub fn new(input: String, line_num: usize) -> Self {
@@ -308,7 +314,10 @@ impl ParserLine {
     }
 
     pub fn continuation(pline: Self, count: usize) -> Self {
-        Self {remaining_graphemes: count, ..pline}
+        Self {
+            remaining_graphemes: count,
+            ..pline
+        }
     }
 
     pub fn iter<'a>(&'a self) -> UTF8Peekable<'a> {
@@ -317,28 +326,29 @@ impl ParserLine {
 
     /// Returns the current item without advancing the incrementer.
     pub fn peek(&self) -> Option<TOMLSeg<'_>> {
-       let remaining_graphs = self.remaining_graphemes;
-       let cursors = &self.seg_nums;
+        let remaining_graphs = self.remaining_graphemes;
+        let cursors = &self.seg_nums;
 
-       // Produce a continuation iterator for a segment offset.
-       /*
+        // Produce a continuation iterator for a segment offset.
+        /*
             REASONING CHECK: since a continuation is only called when an iterator
             has already been produced at least once, in order to produce an offset iterator,
-            we must decrement the current segment number to produce it. 
+            we must decrement the current segment number to produce it.
 
             The ONLY way I can see this producing an error is if offset iterator is produced when
             curr_seg_num is 0. Assuming I only produce the remaining grapheme count with the current
             segment iterator, this would only occur if said iterator were produced with peek.
 
             In other words, only produce an offset iterator with iterators produced from next_seg.
-        */ 
+        */
         if remaining_graphs != 0 {
             let curr_num = self.curr_seg_num - 1;
             let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
             let num_elements = ub - lb;
             let skips = num_elements - remaining_graphs;
 
-            let mut iter = self.data
+            let mut iter = self
+                .data
                 .as_str()
                 .graphemes(true)
                 .take(ub)
@@ -347,15 +357,15 @@ impl ParserLine {
             for _ in 0..skips {
                 iter.next();
             }
-            return Some(iter)
+            return Some(iter);
         }
 
         let output: Option<TOMLSeg<'_>>;
         let curr_num = self.curr_seg_num;
         if curr_num == self.iter_limit {
             output = None;
-        }
-        else {  // produce full segment
+        } else {
+            // produce full segment
             let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
             output = Some(
                 self.data
@@ -363,7 +373,7 @@ impl ParserLine {
                     .graphemes(true)
                     .take(ub)
                     .skip(lb)
-                    .peekable()
+                    .peekable(),
             );
         }
 
@@ -371,28 +381,29 @@ impl ParserLine {
     }
 
     pub fn next_seg(&mut self) -> Option<TOMLSeg<'_>> {
-       let remaining_graphs = self.remaining_graphemes;
-       let cursors = &self.seg_nums;
+        let remaining_graphs = self.remaining_graphemes;
+        let cursors = &self.seg_nums;
 
-       // Produce a continuation iterator for a segment offset.
-       /*
+        // Produce a continuation iterator for a segment offset.
+        /*
             REASONING CHECK: since a continuation is only called when an iterator
             has already been produced at least once, in order to produce an offset iterator,
-            we must decrement the current segment number to produce it. 
+            we must decrement the current segment number to produce it.
 
             The ONLY way I can see this producing an error is if offset iterator is produced when
             curr_seg_num is 0. Assuming I only produce the remaining grapheme count with the current
             segment iterator, this would only occur if said iterator were produced with peek.
 
             In other words, only produce an offset iterator with iterators produced from next_seg.
-        */ 
+        */
         if remaining_graphs != 0 {
             let curr_num = self.curr_seg_num - 1;
             let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
             let num_elements = ub - lb;
             let skips = num_elements - remaining_graphs;
 
-            let mut iter = self.data
+            let mut iter = self
+                .data
                 .as_str()
                 .graphemes(true)
                 .take(ub)
@@ -401,16 +412,16 @@ impl ParserLine {
             for _ in 0..skips {
                 iter.next();
             }
-            self.remaining_graphemes = 0;  // set termination cond.
-            return Some(iter)
+            self.remaining_graphemes = 0; // set termination cond.
+            return Some(iter);
         }
 
         let output: Option<TOMLSeg<'_>>;
         let curr_num = self.curr_seg_num;
         if curr_num == self.iter_limit {
             output = None;
-        }
-        else {  // produce full segment
+        } else {
+            // produce full segment
             let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
             output = Some(
                 self.data
@@ -418,7 +429,7 @@ impl ParserLine {
                     .graphemes(true)
                     .take(ub)
                     .skip(lb)
-                    .peekable()
+                    .peekable(),
             );
             self.curr_seg_num += 1;
         }
