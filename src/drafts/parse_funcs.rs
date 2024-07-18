@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_imports)]
 use super::parsetooling::{ParserLine, TOMLSeg};
 
 fn skip_ws(mut seg: TOMLSeg<'_>) -> TOMLSeg<'_> {

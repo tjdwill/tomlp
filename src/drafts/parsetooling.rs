@@ -4,7 +4,7 @@ fn main() {
 }
 
  
-mod tomlparse {
+pub mod tomlparse {
     use super::*;
     static EOF_ERROR: &str = "End of File during parsing operation."; 
 
@@ -18,7 +18,7 @@ mod tomlparse {
         ////////////////////////
         // Creation/Modification
         ////////////////////////
-        fn init(file_path: &str) -> Result<Self, String> {
+        pub fn init(file_path: &str) -> Result<Self, String> {
             let fd = Self::validate_file(file_path)?;
             Ok(Self {
                 buffer: String::with_capacity(100 * 4),
@@ -33,13 +33,15 @@ mod tomlparse {
             let toml_ext: &OsStr = OsStr::new("toml");
             let test = Path::new(input);
             match test.extension() {
-                Some(toml_ext) => {
+                Some(ext) => {
                     if !test.exists() {
-                        return Err("File does not exist.".to_string());
-                    } else {
+                        return Err("File does not exist.".to_string())
+                    } else if ext != toml_ext {
+                        return Err("Incorrect file extension.".to_string())
+                    } else{
                     }
                 }
-                _ => return Err("Incorrect file extension.".to_string()),
+                None => return Err("Incorrect file extension.".to_string()),
             }
 
             match File::open(input) {
@@ -51,7 +53,7 @@ mod tomlparse {
         /// returns false -> EoF
         /// Won't check for EoF mid-value parsing.
         /// I only plan to check in the outer loop.
-        fn next_line(&mut self) -> Result<bool, String> {
+        pub fn next_line(&mut self) -> Result<bool, String> {
             self.buffer.clear();
             match self.reader.read_line(&mut self.buffer) {
                 Ok(0) => return Ok(false),
@@ -83,7 +85,7 @@ mod tomlparse {
         /// which would likely require this signature to change to return &'static str OR pass
         /// the String structure in directly to push the slice to it.
         /// This function is for DRAFTING purposes ONLY. The signature will be different in the implementation.
-        fn process_multi_escape_sequence(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
+        pub fn process_multi_escape_sequence(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
             // TODO: Check logic for this function
             // Assume we have identified a backslash
             let mut seg = {
@@ -127,8 +129,22 @@ mod tomlparse {
             return Ok((outchar, ParserLine::continuation(pline, count)))
         }
 
-        fn get_nonwhitespace(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
-            let mut seg = pline.next_seg().unwrap(); 
+        pub fn get_nonwhitespace(&mut self, mut pline: ParserLine) -> Result<(char, ParserLine), String> {
+            // The last line may have ended if the whitespace character was a newline, so
+            // the next line is obtained in that instance.
+            let mut seg = {
+                match pline.next_seg() {
+                    Some(next_seg) => next_seg,
+                    None => {
+                        if !self.next_line()? {
+                            return Err(String::from(EOF_ERROR))
+                        } else {
+                            return self.get_nonwhitespace(self.gen_pline())
+                        }
+                    }
+                }
+            };
+            // find the non-newline
             loop {
                 match seg.next() {
                     Some(ch) => {
@@ -160,7 +176,7 @@ mod tomlparse {
             }
         }
 
-        fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
+        pub fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
             // try to find 4 or 8 hexadecimal digits
             const MIN_SEQ_LENGTH: i32 = 4;
             const MAX_SEQ_LENGTH: i32 = 8;

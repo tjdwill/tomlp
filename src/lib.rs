@@ -1,7 +1,8 @@
+#![allow(dead_code, unused_variables, unused_imports)]
 use unicode_segmentation::UnicodeSegmentation as utf8;
 
 pub mod prototype;
-mod drafts;
+pub mod drafts;
 
 mod toml {
     use super::utf8;
