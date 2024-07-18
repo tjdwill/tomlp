@@ -11,6 +11,12 @@ Here is a living list of questions I have about the design:
     - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
 - How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
 
+## 17 July 2024
+
+I think I may have finally stumbled upon my desired struct that allows for the parsing context to be passed around. A major impediment to progress was the inability to pass around the `TOMLSeg<'a>` iterator, especially mid-iteration. To solve this, I modified `ParserLine` to be able to reconstruct the iterator with the necessary offset. 
+
+This may be a more general lesson for Rust. It is likely better to "compress" the data such that, instead of passing along a state, you pass an object that can reconstruct said state.
+
 ## 16 July 2024
 
 Still working on how to represent the data mid-parsing. After many redesigns--including a venture into creating an iterator object (which did compile, by the way)--the current design has three entities:
