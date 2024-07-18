@@ -1,0 +1,9 @@
+pub const COMMENT_TOKEN: &str = "#";
+pub const INLINETAB_OPEN_TOKEN: &str = "{";
+pub const INLINETAB_CLOSE_TOKEN: &str = "}";
+pub const KEY_VAL_SEP: &str = "=";
+pub const LITERAL_STR_TOKEN: &str = "'";
+pub const SEQUENCE_DELIM: &str = ",";
+pub const STR_TOKEN: &str = "\"";
+pub const TABLE_OPEN_TOKEN: &str = "[";
+pub const TABLE_CLOSE_TOKEN: &str = "]";

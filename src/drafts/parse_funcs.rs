@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_imports)]
 use super::parsetooling::{ParserLine, TOMLSeg};
 
 fn skip_ws(mut seg: TOMLSeg<'_>) -> TOMLSeg<'_> {
@@ -116,4 +115,44 @@ fn is_hexdigit(query: Option<&&str>) -> bool {
         }
         None => false,
     }
+}
+
+///////////////
+// Helper Funcs
+///////////////
+
+fn invalid_comment_char(s: &str) -> bool {
+    // produced via `print_invalid_comment_chars`
+    const CHARS: [&str; 32] = [
+        "\0", "\u{1}", "\u{2}", "\u{3}", "\u{4}", "\u{5}", "\u{6}", "\u{7}", "\u{8}", "\n",
+        "\u{b}", "\u{c}", "\r", "\u{e}", "\u{f}", "\u{10}", "\u{11}", "\u{12}", "\u{13}", "\u{14}",
+        "\u{15}", "\u{16}", "\u{17}", "\u{18}", "\u{19}", "\u{1a}", "\u{1b}", "\u{1c}", "\u{1d}",
+        "\u{1e}", "\u{1f}", "\u{7f}",
+    ];
+
+    for c in CHARS {
+        if s == c {
+            return true;
+        }
+    }
+    false
+}
+fn get_graphemes(s: &str) -> Vec<&str> {
+    unicode_segmentation::UnicodeSegmentation::graphemes(s, true).collect::<Vec<_>>()
+}
+/// Use this to print an array of invalid chars. Make the resulting array via Copy/Paste.
+pub fn print_invalid_comment_chars() {
+    println!("Invalid TOML Comment Char Report");
+    let inval_string = get_invalid_comment_chars();
+    let invalids = get_graphemes(inval_string.as_str());
+    println!("Total Num of Invalids: {}", invalids.len());
+    println!("Invalid Comment Chars: {:?}\n", invalids);
+}
+
+fn get_invalid_comment_chars() -> String {
+    let range1 = 0_u8..=8_u8;
+    let range2 = u8::from_str_radix("A", 16).unwrap()..=u8::from_str_radix("1F", 16).unwrap();
+    let range3 = u8::from_str_radix("7F", 16).unwrap()..u8::from_str_radix("80", 16).unwrap();
+    let chars = range1.chain(range2.chain(range3)).collect::<Vec<u8>>();
+    String::from_utf8(chars).unwrap()
 }

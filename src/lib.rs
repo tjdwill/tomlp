@@ -2,7 +2,6 @@
 use unicode_segmentation::UnicodeSegmentation as utf8;
 
 pub mod drafts;
-pub mod prototype;
 
 mod toml {
     use super::utf8;

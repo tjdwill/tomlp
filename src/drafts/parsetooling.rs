@@ -1,290 +1,21 @@
-#![allow(dead_code, unused_imports, unused_variables)]
 fn main() {
     tests::main();
 }
 
-pub mod tomlparse {
-    use super::*;
-    static EOF_ERROR: &str = "End of File during parsing operation.";
-
-    #[derive(Debug)]
-    pub struct TOMLParser {
-        buffer: String,
-        reader: BufReader<File>,
-        line_num: usize,
-    }
-    impl TOMLParser {
-        ////////////////////////
-        // Creation/Modification
-        ////////////////////////
-        pub fn init(file_path: &str) -> Result<Self, String> {
-            let fd = Self::validate_file(file_path)?;
-            Ok(Self {
-                buffer: String::with_capacity(100 * 4),
-                reader: BufReader::new(fd),
-                line_num: 0,
-            })
-        }
-
-        fn validate_file(input: &str) -> Result<File, String> {
-            use std::ffi::OsStr;
-
-            let toml_ext: &OsStr = OsStr::new("toml");
-            let test = Path::new(input);
-            match test.extension() {
-                Some(ext) => {
-                    if !test.exists() {
-                        return Err("File does not exist.".to_string());
-                    } else if ext != toml_ext {
-                        return Err("Incorrect file extension.".to_string());
-                    } else {
-                    }
-                }
-                None => return Err("Incorrect file extension.".to_string()),
-            }
-
-            match File::open(input) {
-                Ok(fd) => Ok(fd),
-                Err(err) => Err(format!("File Open Error: {}", err.kind())),
-            }
-        }
-
-        /// returns false -> EoF
-        /// Won't check for EoF mid-value parsing.
-        /// I only plan to check in the outer loop.
-        pub fn next_line(&mut self) -> Result<bool, String> {
-            self.buffer.clear();
-            match self.reader.read_line(&mut self.buffer) {
-                Ok(0) => return Ok(false),
-                Ok(sz) => {
-                    self.line_num += 1;
-                    return Ok(true);
-                }
-                Err(err) => {
-                    return Err(format!(
-                        "Read error for line {1}: {0}",
-                        err.kind(),
-                        self.line_num + 1
-                    ))
-                }
-            }
-        }
-
-        fn gen_pline(&self) -> ParserLine {
-            ParserLine::new(self.buffer.clone(), self.line_num)
-        }
-
-        ////////////////////
-        // Parsing Functions
-        ////////////////////
-
-        /// Produce a UTF8 escape literal from a given iterator
-        /// Assumes Unix OS so the newline can fit into a char.
-        /// In the future (when I get this thing working), I can adjust for platform support
-        /// which would likely require this signature to change to return &'static str OR pass
-        /// the String structure in directly to push the slice to it.
-        /// This function is for DRAFTING purposes ONLY. The signature will be different in the implementation.
-        pub fn process_multi_escape_sequence(
-            &mut self,
-            mut pline: ParserLine,
-        ) -> Result<(char, ParserLine), String> {
-            // TODO: Check logic for this function
-            // Assume we have identified a backslash
-            let mut seg = {
-                match pline.next_seg() {
-                    Some(next_seg) => next_seg,
-                    None => return Err(String::from(EOF_ERROR)), // only condition in which a \ is followed by nothing.
-                }
-            };
-            // from here, we *know* there is at least one character left to read.
-            let outchar: char;
-            let c = seg.next().unwrap();
-            match c {
-                "b" => outchar = '\u{0008}',
-                "t" => outchar = '\t',
-                "n" => outchar = '\n',
-                "f" => outchar = '\u{000C}',
-                "r" => outchar = '\r',
-                "\"" => outchar = '\"',
-                "\\" => outchar = '\\',
-                "u" | "U" => {
-                    match Self::escape_utf8(&mut seg) {
-                        Some(c) => outchar = c,
-                        None => return Err(format!(
-                            "Err: Line {}: Invalid UTF8 escape sequence. Format: \\uXXXX or \\uXXXXXXXX", pline.line_num
-                        ))
-                    }
-                }
-                _ => {
-                    if !c.chars().next().unwrap().is_whitespace() {
-                        return Err(format!(
-                            "Error: Line {}: Invalid escape sequence.", pline.line_num
-                        ))
-                    } else {
-                        // find next non-whitespace char
-                        let count = seg.count();
-                        return self.get_nonwhitespace(ParserLine::continuation(pline, count))
-                    }
-                }
-            }
-            let count = seg.count();
-            return Ok((outchar, ParserLine::continuation(pline, count)));
-        }
-
-        pub fn get_nonwhitespace(
-            &mut self,
-            mut pline: ParserLine,
-        ) -> Result<(char, ParserLine), String> {
-            // The last line may have ended if the whitespace character was a newline, so
-            // the next line is obtained in that instance.
-            let mut seg = {
-                match pline.next_seg() {
-                    Some(next_seg) => next_seg,
-                    None => {
-                        if !self.next_line()? {
-                            return Err(String::from(EOF_ERROR));
-                        } else {
-                            return self.get_nonwhitespace(self.gen_pline());
-                        }
-                    }
-                }
-            };
-            // find the non-newline
-            loop {
-                match seg.next() {
-                    Some(ch) => {
-                        let ch = ch.chars().next().unwrap();
-                        if !ch.is_whitespace() {
-                            let count = seg.count();
-                            return Ok((ch, ParserLine::continuation(pline, count)));
-                        } else {
-                            continue;
-                        }
-                    }
-                    None => {
-                        // try to get the next segment
-                        match pline.next_seg() {
-                            Some(next_seg) => {
-                                seg = next_seg;
-                                continue;
-                            }
-                            None => {
-                                // try to get the next line
-                                if !self.next_line()? {
-                                    return Err(String::from(EOF_ERROR));
-                                } else {
-                                    return self.get_nonwhitespace(self.gen_pline());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        pub fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
-            // try to find 4 or 8 hexadecimal digits
-            const MIN_SEQ_LENGTH: i32 = 4;
-            const MAX_SEQ_LENGTH: i32 = 8;
-
-            let mut hex_val = 0_u32;
-            let mut digits_processed = 0;
-
-            while digits_processed < MAX_SEQ_LENGTH {
-                if Self::is_hexdigit(iter.peek()) {
-                    let digit = iter.next().unwrap();
-                    hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap();
-                } else if digits_processed == MIN_SEQ_LENGTH {
-                    break;
-                } else {
-                    return None;
-                }
-                digits_processed += 1;
-            }
-
-            std::char::from_u32(hex_val)
-        }
-
-        /// determines if the next entry of a UTF8Peek Iterator is a hexadecimal value
-        fn is_hexdigit(query: Option<&&str>) -> bool {
-            match query {
-                Some(text) => {
-                    let char_opt = text.chars().next();
-                    match char_opt {
-                        Some(c) => match c {
-                            '0'..='9' | 'A'..='F' | 'a'..='f' => true,
-                            _ => false,
-                        },
-                        None => false, // was the empty string
-                    }
-                }
-                None => false,
-            }
-        }
-    } // impl ParserLine
-
-    ///////////////////
-    // Helper Functions
-    ///////////////////
-
-    pub fn skip_ws<'a>(iter: &mut TOMLSeg<'a>) {
-        loop {
-            match iter.peek() {
-                Some(&ch) => match ch {
-                    " " | "\t" => {
-                        iter.next();
-                        continue;
-                    }
-                    _ => return,
-                },
-                None => return,
-            }
-        }
-    }
-
-    pub fn process_comment(mut pline: ParserLine) -> Result<(), String> {
-        let line_num = pline.line_num;
-        let mut iter = pline.next_seg().unwrap();
-        loop {
-            match iter.next() {
-                Some(ch) => {
-                    if !is_valid_comment(ch) {
-                        return Err(format!(
-                            "Invalid Comment Character: {} on Line {}",
-                            ch, line_num
-                        ));
-                    }
-                }
-                None => {
-                    let next_iter = {
-                        match pline.peek() {
-                            Some(iter) => iter,
-                            None => return Ok(()),
-                        }
-                    };
-                    return process_comment(pline);
-                }
-            }
-        }
-    }
-
-    pub fn is_valid_comment(c: &str) -> bool {
-        true
-    }
-}
-
-pub use std::fs::File;
-pub use std::io::{prelude::*, BufReader};
+//stdlib imports
 use std::iter::{Peekable, Skip, Take};
-pub use std::path::Path;
+// third-party imports
 use unicode_segmentation::{Graphemes, UnicodeSegmentation as utf8};
-
-pub type UTF8Peekable<'a> = Peekable<Graphemes<'a>>;
-pub type TOMLSeg<'a> = Peekable<Skip<Take<Graphemes<'a>>>>;
+// internal imports
+use super::constants::{
+    COMMENT_TOKEN, INLINETAB_CLOSE_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, LITERAL_STR_TOKEN,
+    SEQUENCE_DELIM, STR_TOKEN, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN,
+};
 
 //////////////
 // Struct Defs
 //////////////
+pub type TOMLSeg<'a> = Peekable<Skip<Take<Graphemes<'a>>>>;
 
 #[derive(Debug)]
 pub struct ParserLine {
@@ -313,15 +44,13 @@ impl ParserLine {
         }
     }
 
+    /// A method that allows for the transfer of parsing context.
+    /// Essentially, the iteration state is able to be recreated.
     pub fn continuation(pline: Self, count: usize) -> Self {
         Self {
             remaining_graphemes: count,
             ..pline
         }
-    }
-
-    pub fn iter<'a>(&'a self) -> UTF8Peekable<'a> {
-        self.data.as_str().graphemes(true).peekable()
     }
 
     /// Returns the current item without advancing the incrementer.
@@ -437,6 +166,13 @@ impl ParserLine {
         output
     }
 
+    pub fn is_exhausted(&self) -> bool {
+        if self.curr_seg_num == self.iter_limit && self.remaining_graphemes == 0 {
+            true
+        } else {
+            false
+        }
+    }
     /////////////////
     // Static Methods
     /////////////////
@@ -468,8 +204,13 @@ impl ParserLine {
                 continue;
             }
             match graph {
-                "[" | "]" | "#" | "{" | "}" | "," => seg_spots.push(i),
-                "=" => {
+                COMMENT_TOKEN
+                | INLINETAB_CLOSE_TOKEN
+                | INLINETAB_OPEN_TOKEN
+                | STR_TOKEN
+                | LITERAL_STR_TOKEN
+                | SEQUENCE_DELIM => seg_spots.push(i),
+                KEY_VAL_SEP => {
                     seg_spots.push(i);
                     seg_spots.push(i + 1);
                     skip = true;
