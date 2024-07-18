@@ -32,7 +32,7 @@ fn process_basic_escape_sequence(iter: &mut TOMLSeg<'_>) -> Option<char> {
 }
 
 pub fn process_comment(mut pline: ParserLine) -> Result<(), String> {
-    let line_num = pline.line_num;
+    let line_num = pline.line_num();
     let mut seg = pline.next_seg().unwrap();
     loop {
         match seg.next() {

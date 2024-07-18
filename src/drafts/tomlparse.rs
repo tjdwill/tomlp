@@ -223,7 +223,7 @@ impl TOMLParser {
                 None => {
                     return Err(format!(
                     "Err: Line {}: Invalid UTF8 escape sequence. Format: \\uXXXX or \\uXXXXXXXX",
-                    pline.line_num
+                    pline.line_num()
                 ))
                 }
             },
@@ -231,7 +231,7 @@ impl TOMLParser {
                 if !c.chars().next().unwrap().is_whitespace() {
                     return Err(format!(
                         "Error: Line {}: Invalid escape sequence.",
-                        pline.line_num
+                        pline.line_num()
                     ));
                 } else {
                     // find next non-whitespace char
@@ -350,7 +350,7 @@ pub fn skip_ws<'a>(iter: &mut TOMLSeg<'a>) {
 }
 
 pub fn process_comment(mut pline: ParserLine) -> Result<(), String> {
-    let line_num = pline.line_num;
+    let line_num = pline.line_num();
     let mut iter = pline.next_seg().unwrap();
     loop {
         match iter.next() {

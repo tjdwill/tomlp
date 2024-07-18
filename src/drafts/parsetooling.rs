@@ -19,13 +19,13 @@ pub type TOMLSeg<'a> = Peekable<Skip<Take<Graphemes<'a>>>>;
 
 #[derive(Debug)]
 pub struct ParserLine {
-    pub line_num: usize,
+    line_num: usize,
     data: String,
     // iteration things
-    seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
-    iter_limit: usize,    // The iteration termination value
-    curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
-    remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
+    seg_nums: Vec<usize>,         // a vector of what is essentially cursor positions to denote segment ranges.
+    iter_limit: usize,            // The iteration termination value
+    curr_seg_num: usize,          // x: 0 <= x <= iter_limit;
+    remaining_graphemes: usize,   // a tracker for reproducing a given segment with some offset.
 }
 impl ParserLine {
     pub fn new(input: String, line_num: usize) -> Self {
@@ -172,6 +172,10 @@ impl ParserLine {
         } else {
             false
         }
+    }
+
+    pub fn line_num(&self) -> usize {
+        self.line_num
     }
     /////////////////
     // Static Methods
