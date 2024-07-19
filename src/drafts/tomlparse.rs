@@ -247,16 +247,17 @@ impl TOMLParser {
                                 }
                                 Some((ch, pline)) => {
                                     context = pline;
-                                    seg =
-                                        {
-                                            match context.next_seg() {
-                                                None => return Err(format!(
+                                    seg = {
+                                        match context.next_seg() {
+                                            None => {
+                                                return Err(format!(
                                                     "Err: Line {}: Non-terminating basic string.",
                                                     self.line_num
-                                                )),
-                                                Some(next) => next,
+                                                ))
                                             }
-                                        };
+                                            Some(next) => next,
+                                        }
+                                    };
                                     grapheme_pool.push(ch);
                                 }
                             }
@@ -278,10 +279,16 @@ impl TOMLParser {
             }
         }
         let count = seg.count();
-        Ok((TOMLType::BasicStr(grapheme_pool), ParserLine::continuation(context, count)))
+        Ok((
+            TOMLType::BasicStr(grapheme_pool),
+            ParserLine::continuation(context, count),
+        ))
     }
 
-    fn process_basic_litstr(&mut self, mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+    fn process_basic_litstr(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
         // throw away delimiter
         let mut seg = context.next_seg().unwrap();
         seg.next();
@@ -320,10 +327,16 @@ impl TOMLParser {
             }
         }
         let count = seg.count();
-        Ok((TOMLType::LitStr(grapheme_pool), ParserLine::continuation(context, count)))
+        Ok((
+            TOMLType::LitStr(grapheme_pool),
+            ParserLine::continuation(context, count),
+        ))
     }
-    
-    fn process_multi_litstr(&mut self, mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+
+    fn process_multi_litstr(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
         // throw away first three characters (the delimiter)
         let mut apostrophe_count = 0;
         let sz = self.buffer.capacity();
@@ -611,7 +624,6 @@ fn skip_ws<'a>(iter: &mut TOMLSeg<'a>) {
         }
     }
 }
-
 
 fn process_comment(mut context: ParserLine) -> Result<(), String> {
     let line_num = context.line_num();

@@ -1,7 +1,7 @@
 use tomlp::drafts::{
-    constants::{STR_TOKEN, LITERAL_STR_TOKEN},
+    constants::{LITERAL_STR_TOKEN, STR_TOKEN},
     tokens::TOMLType,
-    tomlparse::TOMLParser, 
+    tomlparse::TOMLParser,
 };
 
 const FILE: &str = "test_resources/strings.toml";
@@ -9,7 +9,7 @@ const FILE: &str = "test_resources/strings.toml";
 fn main() -> Result<(), String> {
     let mut parser = TOMLParser::init(FILE)?;
     let mut pline = parser.next_parserline()?;
-    
+
     // Basic Strings
     println!("\nBasic Strings");
     while let Some(&STR_TOKEN) = pline.peek().unwrap().peek() {
@@ -19,11 +19,11 @@ fn main() -> Result<(), String> {
             let outstring = str;
             println!("Basic String\n{}", outstring);
         } else {
-            return Err(format!("Line {}", context.line_num()))
+            return Err(format!("Line {}", context.line_num()));
         }
         pline = parser.next_parserline()?;
     }
-    
+
     // Multi-Strings
     println!("\nMulti-line Strings");
     pline = parser.next_parserline()?;
@@ -34,11 +34,11 @@ fn main() -> Result<(), String> {
             let outstring = str;
             println!("{}", outstring);
         } else {
-            return Err(format!("Line {}", context.line_num()))
+            return Err(format!("Line {}", context.line_num()));
         }
         pline = parser.next_parserline()?;
     }
-    
+
     // Literal Strings
     println!("\nLiteral Strings");
     pline = parser.next_parserline()?;
@@ -49,7 +49,7 @@ fn main() -> Result<(), String> {
             let outstring = str;
             println!("{}", outstring);
         } else {
-            return Err(format!("Line {}", context.line_num()))
+            return Err(format!("Line {}", context.line_num()));
         }
         pline = parser.next_parserline()?;
     }
@@ -64,10 +64,10 @@ fn main() -> Result<(), String> {
             let outstring = str;
             println!("{}", outstring);
         } else {
-            return Err(format!("Line {}", context.line_num()))
+            return Err(format!("Line {}", context.line_num()));
         }
         pline = parser.next_parserline()?;
     }
-    
+
     Ok(())
 }
