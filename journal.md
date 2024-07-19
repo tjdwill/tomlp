@@ -11,6 +11,10 @@ Here is a living list of questions I have about the design:
     - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
 - How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
 
+## 18 July 2024
+
+Major code reorganization. Implemented basic and multi-line string parsing. Literal string parsing comes at a later date.
+
 ## 17 July 2024
 
 I think I may have finally stumbled upon my desired struct that allows for the parsing context to be passed around. A major impediment to progress was the inability to pass around the `TOMLSeg<'a>` iterator, especially mid-iteration. To solve this, I modified `ParserLine` to be able to reconstruct the iterator with the necessary offset. 

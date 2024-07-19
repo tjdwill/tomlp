@@ -22,10 +22,10 @@ pub struct ParserLine {
     line_num: usize,
     data: String,
     // iteration things
-    seg_nums: Vec<usize>,         // a vector of what is essentially cursor positions to denote segment ranges.
-    iter_limit: usize,            // The iteration termination value
-    curr_seg_num: usize,          // x: 0 <= x <= iter_limit;
-    remaining_graphemes: usize,   // a tracker for reproducing a given segment with some offset.
+    seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
+    iter_limit: usize,    // The iteration termination value
+    curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
+    remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
 }
 impl ParserLine {
     pub fn new(input: String, line_num: usize) -> Self {
@@ -208,12 +208,9 @@ impl ParserLine {
                 continue;
             }
             match graph {
-                COMMENT_TOKEN
-                | INLINETAB_CLOSE_TOKEN
-                | INLINETAB_OPEN_TOKEN
-                | STR_TOKEN
-                | LITERAL_STR_TOKEN
-                | SEQUENCE_DELIM => seg_spots.push(i),
+                COMMENT_TOKEN | INLINETAB_CLOSE_TOKEN | INLINETAB_OPEN_TOKEN | SEQUENCE_DELIM => {
+                    seg_spots.push(i)
+                }
                 KEY_VAL_SEP => {
                     seg_spots.push(i);
                     seg_spots.push(i + 1);

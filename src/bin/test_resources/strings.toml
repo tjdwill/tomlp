@@ -1,0 +1,5 @@
+"""
+Roses are red
+Violets are blue"""
+"I'm a string. \"You can quote me\". Name\tJos\u00E9\nLocation\tSF."
+""""This," she said, "is just a pointless statement. \u0001f525""""
