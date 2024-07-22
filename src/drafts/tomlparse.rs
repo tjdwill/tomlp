@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::iter::Peekable;
 use std::path::Path;
+use std::slice::RSplit;
 // third-party imports
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -91,9 +92,10 @@ impl TOMLParser {
     ////////////////////
     // Parsing Functions
     ////////////////////
-    // Processing a string
 
-    pub fn process_string(
+    // String parseing
+
+    pub fn parse_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -105,12 +107,12 @@ impl TOMLParser {
                 seg.next();
                 continue;
             }
-            return self.process_basic_string(context);
+            return self.parse_basic_string(context);
         }
-        return self.process_multi_string(context);
+        return self.parse_multi_string(context);
     }
 
-    pub fn process_literal_string(
+    pub fn parse_literal_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -121,12 +123,12 @@ impl TOMLParser {
                 seg.next();
                 continue;
             }
-            return self.process_basic_litstr(context);
+            return self.parse_basic_litstr(context);
         }
-        return self.process_multi_litstr(context);
+        return self.parse_multi_litstr(context);
     }
 
-    pub fn process_multi_string(
+    pub fn parse_multi_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -158,7 +160,7 @@ impl TOMLParser {
                         "\\" => {
                             // escape sequence
                             let count = seg.count();
-                            let (ch, pline, inc_delim) = self.process_multi_escape_sequence(
+                            let (ch, pline, inc_delim) = self.parse_multi_escape_sequence(
                                 ParserLine::continuation(context, count),
                             )?;
 
@@ -209,7 +211,7 @@ impl TOMLParser {
         Ok((TOMLType::MultiStr(outstring), context))
     }
 
-    pub fn process_basic_string(
+    pub fn parse_basic_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -236,7 +238,7 @@ impl TOMLParser {
                         "\"" => break,
                         "\\" => {
                             let count = seg.count();
-                            match Self::process_basic_escape_sequence(ParserLine::continuation(
+                            match Self::parse_basic_escape_sequence(ParserLine::continuation(
                                 context, count,
                             )) {
                                 None => {
@@ -285,7 +287,7 @@ impl TOMLParser {
         ))
     }
 
-    fn process_basic_litstr(
+    fn parse_basic_litstr(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -333,7 +335,7 @@ impl TOMLParser {
         ))
     }
 
-    fn process_multi_litstr(
+    fn parse_multi_litstr(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -392,7 +394,7 @@ impl TOMLParser {
     /// Produce a UTF8 escape literal from a given iterator
     /// Assumes Unix OS so the newline can fit into a char.
     /// PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
-    pub fn process_multi_escape_sequence(
+    pub fn parse_multi_escape_sequence(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(char, ParserLine, bool), String> {
@@ -450,7 +452,7 @@ impl TOMLParser {
         return Ok((outchar, ParserLine::continuation(context, count), false));
     }
 
-    fn process_basic_escape_sequence(mut context: ParserLine) -> Option<(char, ParserLine)> {
+    fn parse_basic_escape_sequence(mut context: ParserLine) -> Option<(char, ParserLine)> {
         // Assume we have identified a backslash
         let mut seg = {
             match context.next_seg() {
@@ -483,6 +485,9 @@ impl TOMLParser {
         Some((outchar, ParserLine::continuation(context, count)))
     }
 
+    /// Proceeds to the next non-whitespace character in the buffer.
+    /// Moves to next line if necessary.
+    /// Whitespace in *this* instance is defined as Unicode whitespace; it's a superset of TOML whitespace.
     fn get_nonwhitespace(&mut self, mut context: ParserLine) -> Result<(char, ParserLine), String> {
         // The last line may have ended if the whitespace character was a newline, so
         // the next line is obtained in that instance.
@@ -523,6 +528,121 @@ impl TOMLParser {
                 }
             }
         }
+    }
+
+    // Integer parsing
+    // This function doesn't need to take a mutable reference because there is no reason to
+    // modify the structure. Is that the correct thing to do?
+    fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+        // Assume we know some character data exists.
+        context = skip_ws(context);
+        let line_num = context.line_num();
+        let mut seg = context.next_seg().unwrap();
+        let mut is_negative = false;
+        let mut plus_found = false;
+        let mut check_prefix = false;
+
+        {
+            let ch = *seg.peek().unwrap(); // UNWRAP Justification: the first character is always present
+            match ch {
+                "+" => {
+                    plus_found = true;
+                    seg.next();
+                }
+                "-" => {
+                    is_negative = true;
+                    seg.next();
+                }
+                _ => (),
+            }
+        }
+
+        // Check for a prefix directive.
+        let mut output: i64 = 0;
+        match seg.next() {
+            Some(ch) => {
+                match ch {
+                    "0" => {
+                        check_prefix = true;
+                    }
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                        let count = seg.count();
+                        (output, context) =
+                            Self::dec_parse(ParserLine::continuation(context, count))?;
+                        seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Line {}: Invalid integer character {}.",
+                            line_num, ch
+                        ))
+                    }
+                }
+            }
+            None => return Err(format!("Line {}: Invalid integer format.", line_num)),
+        }
+
+        // Try parsing non-decimal format.
+        if check_prefix {
+            match seg.next() {
+                Some(prefix) => {
+                    match prefix {
+                        "b" | "o" | "x" => {
+                            if is_negative || plus_found {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
+                                ));
+                            }
+                            let count = seg.count();
+                            (output, context) = Self::nondec_parse(
+                                prefix.to_string(),
+                                ParserLine::continuation(context, count),
+                            )?;
+                            seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
+                        }
+                        _ => {
+                            let count = seg.count();
+                            (output, context) =
+                                Self::dec_parse(ParserLine::continuation(context, count))?;
+                            seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
+                        }
+                    }
+                }
+                None => (),
+            }
+        }
+
+        if is_negative {
+            output = -output;
+        }
+        let count = seg.count();
+        context = ParserLine::continuation(context, count);
+        Ok((TOMLType::Int(output), context))
+    }
+
+    fn dec_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        unimplemented!()
+    }
+
+    fn nondec_parse(mode: String, mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        match mode.as_str() {
+            "x" => Self::hex_parse(context),
+            "o" => Self::oct_parse(context),
+            "b" => Self::bin_parse(context),
+            _ => Err("Never gets here.".to_string()),
+        }
+    }
+
+    fn hex_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        unimplemented!()
+    }
+
+    fn oct_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        unimplemented!()
+    }
+
+    fn bin_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        unimplemented!()
     }
 }
 
@@ -576,18 +696,18 @@ fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
     const MAX_SEQ_LENGTH: i32 = 8;
 
     let mut hex_val = 0_u32;
-    let mut digits_processed = 0;
+    let mut digits_parseed = 0;
 
-    while digits_processed < MAX_SEQ_LENGTH {
+    while digits_parseed < MAX_SEQ_LENGTH {
         if is_hexdigit(iter.peek()) {
             let digit = iter.next().unwrap();
             hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap();
-        } else if digits_processed == MIN_SEQ_LENGTH {
+        } else if digits_parseed == MIN_SEQ_LENGTH {
             break;
         } else {
             return None;
         }
-        digits_processed += 1;
+        digits_parseed += 1;
     }
 
     std::char::from_u32(hex_val)
@@ -610,22 +730,31 @@ fn is_hexdigit(query: Option<&&str>) -> bool {
     }
 }
 
-fn skip_ws<'a>(iter: &mut TOMLSeg<'a>) {
+/// skip the whitespace at the current segment
+fn skip_ws(mut context: ParserLine) -> ParserLine {
+    let mut seg = {
+        match context.next_seg() {
+            None => return context,
+            Some(next) => next,
+        }
+    };
+
     loop {
-        match iter.peek() {
+        match seg.peek() {
             Some(&ch) => match ch {
                 " " | "\t" => {
-                    iter.next();
-                    continue;
+                    seg.next();
                 }
-                _ => return,
+                _ => break,
             },
-            None => return,
+            None => break,
         }
     }
+    let count = seg.count();
+    ParserLine::continuation(context, count)
 }
 
-fn process_comment(mut context: ParserLine) -> Result<(), String> {
+fn parse_comment(mut context: ParserLine) -> Result<(), String> {
     let line_num = context.line_num();
     let mut iter = context.next_seg().unwrap();
     loop {
@@ -645,7 +774,7 @@ fn process_comment(mut context: ParserLine) -> Result<(), String> {
                         None => return Ok(()),
                     }
                 };
-                return process_comment(context);
+                return parse_comment(context);
             }
         }
     }

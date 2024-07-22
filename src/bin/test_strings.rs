@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
     println!("\nBasic Strings");
     while let Some(&STR_TOKEN) = pline.peek().unwrap().peek() {
         print!("\nLine {}: ", pline.line_num());
-        let (outstring, context) = parser.process_string(pline)?;
+        let (outstring, context) = parser.parse_string(pline)?;
         if let TOMLType::BasicStr(str) = outstring {
             let outstring = str;
             println!("Basic String\n{}", outstring);
@@ -29,7 +29,7 @@ fn main() -> Result<(), String> {
     pline = parser.next_parserline()?;
     while let Some(&STR_TOKEN) = pline.peek().unwrap().peek() {
         print!("Line {}: ", pline.line_num());
-        let (outstring, context) = parser.process_string(pline)?;
+        let (outstring, context) = parser.parse_string(pline)?;
         if let TOMLType::MultiStr(str) = outstring {
             let outstring = str;
             println!("{}", outstring);
@@ -44,7 +44,7 @@ fn main() -> Result<(), String> {
     pline = parser.next_parserline()?;
     while let Some(&LITERAL_STR_TOKEN) = pline.peek().unwrap().peek() {
         print!("Line {}: ", pline.line_num());
-        let (outstring, context) = parser.process_literal_string(pline)?;
+        let (outstring, context) = parser.parse_literal_string(pline)?;
         if let TOMLType::LitStr(str) = outstring {
             let outstring = str;
             println!("{}", outstring);
@@ -59,7 +59,7 @@ fn main() -> Result<(), String> {
     pline = parser.next_parserline()?;
     while let Some(&LITERAL_STR_TOKEN) = pline.peek().unwrap().peek() {
         print!("Line {}: ", pline.line_num());
-        let (outstring, context) = parser.process_literal_string(pline)?;
+        let (outstring, context) = parser.parse_literal_string(pline)?;
         if let TOMLType::MultiLitStr(str) = outstring {
             let outstring = str;
             println!("{}", outstring);
