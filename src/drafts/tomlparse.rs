@@ -112,7 +112,7 @@ impl TOMLParser {
         return self.parse_multi_string(context);
     }
 
-    pub fn parse_literal_string(
+    fn parse_literal_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -126,165 +126,6 @@ impl TOMLParser {
             return self.parse_basic_litstr(context);
         }
         return self.parse_multi_litstr(context);
-    }
-
-    pub fn parse_multi_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
-        // throw away first three characters (the delimiter)
-        let mut quote_count = 0;
-        let sz = self.buffer.capacity();
-        let mut grapheme_pool = String::with_capacity(sz);
-
-        let mut seg = context.next_seg().unwrap();
-        for i in 0..3 {
-            seg.next();
-        }
-        // trim immediate newline
-        if let Some(&"\n") = seg.peek() {
-            seg.next();
-        }
-        // in multi-string context
-        let mut graphemes_added = 0;
-        while quote_count < 3 {
-            match seg.next() {
-                Some(ch) => {
-                    graphemes_added += 1;
-                    match ch {
-                        STR_TOKEN => {
-                            quote_count += 1;
-                            grapheme_pool.push_str(ch);
-                        }
-
-                        "\\" => {
-                            // escape sequence
-                            let count = seg.count();
-                            let (ch, pline, inc_delim) = self.parse_multi_escape_sequence(
-                                ParserLine::continuation(context, count),
-                            )?;
-
-                            if inc_delim {
-                                quote_count += 1;
-                            } else {
-                                quote_count = 0;
-                            }
-
-                            grapheme_pool.push(ch);
-
-                            context = pline;
-                            if context.is_exhausted() {
-                                context = self.next_parserline()?;
-                            }
-                            seg = context.next_seg().unwrap();
-                        }
-
-                        _ => {
-                            quote_count = 0;
-                            grapheme_pool.push_str(ch);
-                        }
-                    }
-                }
-                None => {
-                    if context.is_exhausted() {
-                        context = self.next_parserline()?;
-                    }
-                    seg = context.next_seg().unwrap();
-                }
-            }
-        } // possibly found closing delimiter
-
-        // check for extra quotation mark (this is a really annoying thing to allow)
-        // REFERENCE: https://toml.io/en/v1.0.0#string
-        if let Some(&"\"") = seg.peek() {
-            grapheme_pool.push_str(seg.next().unwrap());
-            graphemes_added += 1;
-        }
-
-        let outstring = grapheme_pool
-            .as_str()
-            .graphemes(true)
-            .take(graphemes_added - 3)
-            .collect::<String>();
-        let count = seg.count();
-        let context = ParserLine::continuation(context, count);
-        Ok((TOMLType::MultiStr(outstring), context))
-    }
-
-    pub fn parse_basic_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
-        // Throw away first character (delimiter)
-        let mut seg = context.next_seg().unwrap();
-        seg.next();
-        let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
-        loop {
-            match seg.next() {
-                None => match context.next_seg() {
-                    None => {
-                        return Err(format!(
-                            "Err: Line {}: Non-terminating basic string.",
-                            self.line_num
-                        ))
-                    }
-                    Some(next) => {
-                        seg = next;
-                        continue;
-                    }
-                },
-                Some(ch) => {
-                    match ch {
-                        "\"" => break,
-                        "\\" => {
-                            let count = seg.count();
-                            match Self::parse_basic_escape_sequence(ParserLine::continuation(
-                                context, count,
-                            )) {
-                                None => {
-                                    return Err(format!(
-                                        "Err: Line {}: Invalid String Escape Sequence",
-                                        self.line_num
-                                    ))
-                                }
-                                Some((ch, pline)) => {
-                                    context = pline;
-                                    seg = {
-                                        match context.next_seg() {
-                                            None => {
-                                                return Err(format!(
-                                                    "Err: Line {}: Non-terminating basic string.",
-                                                    self.line_num
-                                                ))
-                                            }
-                                            Some(next) => next,
-                                        }
-                                    };
-                                    grapheme_pool.push(ch);
-                                }
-                            }
-                        }
-                        _ => {
-                            // TODO: Add check for disallowed UTF8 characters.
-                            if !is_valid_multstr_grapheme(ch) {
-                                return Err(format!(
-                                    "Err: Line {}: Invalid Unicode Character U+{:X}",
-                                    self.line_num,
-                                    ch.chars().next().unwrap() as u32,
-                                ));
-                            } else {
-                                grapheme_pool.push_str(ch);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        let count = seg.count();
-        Ok((
-            TOMLType::BasicStr(grapheme_pool),
-            ParserLine::continuation(context, count),
-        ))
     }
 
     fn parse_basic_litstr(
@@ -391,10 +232,169 @@ impl TOMLParser {
         Ok((TOMLType::MultiLitStr(outstring), context))
     }
 
+    fn parse_multi_string(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
+        // throw away first three characters (the delimiter)
+        let mut quote_count = 0;
+        let sz = self.buffer.capacity();
+        let mut grapheme_pool = String::with_capacity(sz);
+
+        let mut seg = context.next_seg().unwrap();
+        for i in 0..3 {
+            seg.next();
+        }
+        // trim immediate newline
+        if let Some(&"\n") = seg.peek() {
+            seg.next();
+        }
+        // in multi-string context
+        let mut graphemes_added = 0;
+        while quote_count < 3 {
+            match seg.next() {
+                Some(ch) => {
+                    graphemes_added += 1;
+                    match ch {
+                        STR_TOKEN => {
+                            quote_count += 1;
+                            grapheme_pool.push_str(ch);
+                        }
+
+                        "\\" => {
+                            // escape sequence
+                            let count = seg.count();
+                            let (ch, pline, inc_delim) = self.parse_multi_escape_sequence(
+                                ParserLine::continuation(context, count),
+                            )?;
+
+                            if inc_delim {
+                                quote_count += 1;
+                            } else {
+                                quote_count = 0;
+                            }
+
+                            grapheme_pool.push(ch);
+
+                            context = pline;
+                            if context.is_exhausted() {
+                                context = self.next_parserline()?;
+                            }
+                            seg = context.next_seg().unwrap();
+                        }
+
+                        _ => {
+                            quote_count = 0;
+                            grapheme_pool.push_str(ch);
+                        }
+                    }
+                }
+                None => {
+                    if context.is_exhausted() {
+                        context = self.next_parserline()?;
+                    }
+                    seg = context.next_seg().unwrap();
+                }
+            }
+        } // possibly found closing delimiter
+
+        // check for extra quotation mark (this is a really annoying thing to allow)
+        // REFERENCE: https://toml.io/en/v1.0.0#string
+        if let Some(&"\"") = seg.peek() {
+            grapheme_pool.push_str(seg.next().unwrap());
+            graphemes_added += 1;
+        }
+
+        let outstring = grapheme_pool
+            .as_str()
+            .graphemes(true)
+            .take(graphemes_added - 3)
+            .collect::<String>();
+        let count = seg.count();
+        let context = ParserLine::continuation(context, count);
+        Ok((TOMLType::MultiStr(outstring), context))
+    }
+
+    fn parse_basic_string(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
+        // Throw away first character (delimiter)
+        let mut seg = context.next_seg().unwrap();
+        seg.next();
+        let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
+        loop {
+            match seg.next() {
+                None => match context.next_seg() {
+                    None => {
+                        return Err(format!(
+                            "Err: Line {}: Non-terminating basic string.",
+                            self.line_num
+                        ))
+                    }
+                    Some(next) => {
+                        seg = next;
+                        continue;
+                    }
+                },
+                Some(ch) => {
+                    match ch {
+                        "\"" => break,
+                        "\\" => {
+                            let count = seg.count();
+                            match Self::parse_basic_escape_sequence(ParserLine::continuation(
+                                context, count,
+                            )) {
+                                None => {
+                                    return Err(format!(
+                                        "Err: Line {}: Invalid String Escape Sequence",
+                                        self.line_num
+                                    ))
+                                }
+                                Some((ch, pline)) => {
+                                    context = pline;
+                                    seg = {
+                                        match context.next_seg() {
+                                            None => {
+                                                return Err(format!(
+                                                    "Err: Line {}: Non-terminating basic string.",
+                                                    self.line_num
+                                                ))
+                                            }
+                                            Some(next) => next,
+                                        }
+                                    };
+                                    grapheme_pool.push(ch);
+                                }
+                            }
+                        }
+                        _ => {
+                            // TODO: Add check for disallowed UTF8 characters.
+                            if !is_valid_multstr_grapheme(ch) {
+                                return Err(format!(
+                                    "Err: Line {}: Invalid Unicode Character U+{:X}",
+                                    self.line_num,
+                                    ch.chars().next().unwrap() as u32,
+                                ));
+                            } else {
+                                grapheme_pool.push_str(ch);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let count = seg.count();
+        Ok((
+            TOMLType::BasicStr(grapheme_pool),
+            ParserLine::continuation(context, count),
+        ))
+    }
+
     /// Produce a UTF8 escape literal from a given iterator
     /// Assumes Unix OS so the newline can fit into a char.
     /// PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
-    pub fn parse_multi_escape_sequence(
+    fn parse_multi_escape_sequence(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(char, ParserLine, bool), String> {
