@@ -22,6 +22,9 @@ pub struct TOMLParser {
     line_num: usize,
 }
 impl TOMLParser {
+    // DEV Note: I think most functions will have to be made public for testing purposes.
+    // Since I don't actually want a user to be able to use the functions, this will likely be a 
+    // private module that is then imported for a stand-alone public `parse` function.
     ////////////////////////
     // Creation/Modification
     ////////////////////////
@@ -112,7 +115,7 @@ impl TOMLParser {
         return self.parse_multi_string(context);
     }
 
-    fn parse_literal_string(
+    pub fn parse_literal_string(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
@@ -394,7 +397,7 @@ impl TOMLParser {
     /// Produce a UTF8 escape literal from a given iterator
     /// Assumes Unix OS so the newline can fit into a char.
     /// PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
-    fn parse_multi_escape_sequence(
+    pub fn parse_multi_escape_sequence(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(char, ParserLine, bool), String> {
@@ -533,14 +536,13 @@ impl TOMLParser {
     // Integer parsing
     // This function doesn't need to take a mutable reference because there is no reason to
     // modify the structure. Is that the correct thing to do?
-    fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+    pub fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
         // Assume we know some character data exists.
         context = skip_ws(context);
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut is_negative = false;
         let mut plus_found = false;
-        let mut check_prefix = false;
 
         {
             let ch = *seg.peek().unwrap(); // UNWRAP Justification: the first character is always present
@@ -559,21 +561,61 @@ impl TOMLParser {
 
         // Check for a prefix directive.
         let mut output: i64 = 0;
-        match seg.next() {
+        match seg.peek() {
             Some(ch) => {
-                match ch {
+                match *ch {
                     "0" => {
-                        check_prefix = true;
+                        seg.next();
+                        // Try parsing non-decimal format
+                        match seg.next() {
+                            None => (),
+                            Some(prefix) => {
+                                match prefix {
+                                    " " | "\t" | "\n" => (),
+
+                                    "b" | "o" | "x" => {
+                                        if is_negative || plus_found {
+                                            return Err(format!(
+                                                "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
+                                            ));
+                                        }
+
+                                        let count = seg.count();
+                                        (output, context) = Self::nondec_parse(
+                                            prefix.to_string(),
+                                            ParserLine::continuation(context, count),
+                                        )?;
+                                        seg = {
+                                            match context.next_seg() {
+                                                None => ParserLine::empty_iter(),
+                                                Some(next) => next,
+                                            } 
+                                        }
+                                    }
+
+                                    _ => {
+                                        return Err(format!(
+                                            "Line {}: Integer Parsing Error: No leading zeros.", line_num
+                                        ))
+                                    }
+                                }
+                            }
+                        }
                     }
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                         let count = seg.count();
                         (output, context) =
                             Self::dec_parse(ParserLine::continuation(context, count))?;
-                        seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
+                        seg = {
+                            match context.next_seg() {
+                                None => ParserLine::empty_iter(),
+                                Some(next) => next,
+                            } 
+                        }
                     }
                     _ => {
                         return Err(format!(
-                            "Line {}: Invalid integer character {}.",
+                            "Line {}: Invalid integer starting character {}.",
                             line_num, ch
                         ))
                     }
@@ -582,36 +624,7 @@ impl TOMLParser {
             None => return Err(format!("Line {}: Invalid integer format.", line_num)),
         }
 
-        // Try parsing non-decimal format.
-        if check_prefix {
-            match seg.next() {
-                Some(prefix) => {
-                    match prefix {
-                        "b" | "o" | "x" => {
-                            if is_negative || plus_found {
-                                return Err(format!(
-                                    "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
-                                ));
-                            }
-                            let count = seg.count();
-                            (output, context) = Self::nondec_parse(
-                                prefix.to_string(),
-                                ParserLine::continuation(context, count),
-                            )?;
-                            seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
-                        }
-                        _ => {
-                            let count = seg.count();
-                            (output, context) =
-                                Self::dec_parse(ParserLine::continuation(context, count))?;
-                            seg = context.next_seg().unwrap(); // UNWRAP Justification: function exits on whitespace.
-                        }
-                    }
-                }
-                None => (),
-            }
-        }
-
+        
         if is_negative {
             output = -output;
         }
@@ -626,20 +639,18 @@ impl TOMLParser {
         let mut found_underscore = false;
         // Check for leading zero
         /*
-            A leading zero is one in which a zero is followed by any other digit or non-whitespace char.
-         */
+           A leading zero is one in which a zero is followed by any other digit or non-whitespace char.
+        */
         let mut output: i64 = 0;
         if let Some(&"0") = seg.peek() {
             seg.next();
             match seg.peek() {
-                Some(ch) => {
-                    match *ch {
-                        " " | "\t" | "\n" => (),
-                        _ => return Err(format!(
-                            "Line {}: Integer Parsing Error: No leading zeros.", line_num
-                        ))
+                Some(ch) => match *ch {
+                    " " | "\t" | "\n" => (),
+                    _ => {
+                        
                     }
-                }
+                },
                 None => (),
             }
         } else {
@@ -647,7 +658,15 @@ impl TOMLParser {
             loop {
                 let previous = output;
                 match seg.peek() {
-                    None => break,
+                    None => {
+                        if found_underscore {
+                            return Err(format!(
+                                "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                            ));
+                        } else {
+                            break
+                        } 
+                    },
                     Some(ch) => {
                         match *ch {
                             "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
@@ -657,22 +676,43 @@ impl TOMLParser {
                                     .wrapping_add(ch.parse::<i64>().unwrap());
 
                                 if previous > output {
-                                    return Err(format!("Line {}: Integer Parsing Error: Integer Overflow", line_num))
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: Integer Overflow",
+                                        line_num
+                                    ));
                                 }
                             }
                             "_" => {
                                 if found_underscore {
                                     return Err(format!(
                                         "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                    ))
+                                    ));
                                 } else {
                                     found_underscore = true;
                                 }
                             }
-                            " " | "\t" | "\n" => break,  // NOTE: Don't need to check for comment symbol '#' because it would appear in a separate line segment.
-                            _ => return Err(format!(
-                                "Line {}: Integer Parsing Error: Invalid digit value '{}'.", line_num, ch
-                            ))
+                            " " | "\t" | "\n" => {
+                                if found_underscore {
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                    ));
+                                } else {
+                                    break
+                                }
+                            }
+                            _ => {
+                                
+                                if found_underscore {
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                    ));
+                                } else{
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
+                                        line_num, ch
+                                    ))
+                                }
+                            }
                         }
                         // advance iterator
                         seg.next();
@@ -682,30 +722,185 @@ impl TOMLParser {
         }
 
         let count = seg.count();
-        Ok((
-            output, ParserLine::continuation(context, count)
-        ))
+        Ok((output, ParserLine::continuation(context, count)))
     }
 
+    // REFACTOR POT.: I could remove the three nondec functions and instead have three different const arrays of valid
+    // digit &strs. The mode would then determine which array to use and which scale factor to use (16, 8, or 2). The
+    // overall logic is the same for all three inner fynctions.
     fn nondec_parse(mode: String, mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        let mut seg = context.peek().unwrap();
+        // preliminary check to see if the next value is some numeric.
+        if !is_hexdigit(seg.peek()) {
+            return Err(format!(
+                "Line {}: Integer Parsing Error: Invalid integer format.",
+                context.line_num()
+            ));
+        }
         match mode.as_str() {
             "x" => Self::hex_parse(context),
             "o" => Self::oct_parse(context),
             "b" => Self::bin_parse(context),
-            _ => Err("Never gets here.".to_string()),
+            _ => Err("`TOMLParser::nondec_parse` should never get here internally.".to_string()),
         }
     }
 
     fn hex_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
-        unimplemented!()
+        let line_num = context.line_num();
+        let mut seg = context.next_seg().unwrap();
+        let mut found_underscore = false;
+        // parse the number, checking for overflow
+        let mut output: i64 = 0;
+        loop {
+            let previous = output;
+            match seg.peek() {
+                None => break,
+                Some(ch) => {
+                    match *ch {
+                        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "a" | "b"
+                        | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" => {
+                            let digit = i64::from_str_radix(ch, 16).unwrap();
+                            found_underscore = false; // is overwriting faster than doing a check every iteration?
+                            output = output
+                                .wrapping_mul(16)
+                                .wrapping_add(digit);
+
+                            if previous > output {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Integer Overflow",
+                                    line_num
+                                ));
+                            }
+                        }
+                        "_" => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
+                                ));
+                            } else {
+                                found_underscore = true;
+                            }
+                        }
+                        " " | "\t" | "\n" => break, // NOTE: Don't need to check for comment symbol '#' because it would appear in a separate line segment.
+                        _ => {
+                            return Err(format!(
+                                "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
+                                line_num, ch
+                            ))
+                        }
+                    }
+                    // advance iterator
+                    seg.next();
+                }
+            }
+        }
+
+        let count = seg.count();
+        Ok((output, ParserLine::continuation(context, count)))
     }
 
     fn oct_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
-        unimplemented!()
+        let line_num = context.line_num();
+        let mut seg = context.next_seg().unwrap();
+        let mut found_underscore = false;
+        // parse the number, checking for overflow
+        let mut output: i64 = 0;
+        loop {
+            let previous = output;
+            match seg.peek() {
+                None => break,
+                Some(ch) => {
+                    match *ch {
+                        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" => {
+                            found_underscore = false; // is overwriting faster than doing a check every iteration?
+                            output = output
+                                .wrapping_mul(8)
+                                .wrapping_add(ch.parse::<i64>().unwrap());
+
+                            if previous > output {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Integer Overflow",
+                                    line_num
+                                ));
+                            }
+                        }
+                        "_" => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
+                                ));
+                            } else {
+                                found_underscore = true;
+                            }
+                        }
+                        " " | "\t" | "\n" => break, // NOTE: Don't need to check for comment symbol '#' because it would appear in a separate line segment.
+                        _ => {
+                            return Err(format!(
+                                "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
+                                line_num, ch
+                            ))
+                        }
+                    }
+                    // advance iterator
+                    seg.next();
+                }
+            }
+        }
+
+        let count = seg.count();
+        Ok((output, ParserLine::continuation(context, count)))
     }
 
     fn bin_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
-        unimplemented!()
+        let line_num = context.line_num();
+        let mut seg = context.next_seg().unwrap();
+        let mut found_underscore = false;
+        // parse the number, checking for overflow
+        let mut output: i64 = 0;
+        loop {
+            let previous = output;
+            match seg.peek() {
+                None => break,
+                Some(ch) => {
+                    match *ch {
+                        "0" | "1" => {
+                            found_underscore = false; // is overwriting faster than doing a check every iteration?
+                            output = output
+                                .wrapping_mul(2)
+                                .wrapping_add(ch.parse::<i64>().unwrap());
+
+                            if previous > output {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Integer Overflow",
+                                    line_num
+                                ));
+                            }
+                        }
+                        "_" => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
+                                ));
+                            } else {
+                                found_underscore = true;
+                            }
+                        }
+                        " " | "\t" | "\n" => break, // NOTE: Don't need to check for comment symbol '#' because it would appear in a separate line segment.
+                        _ => {
+                            return Err(format!(
+                                "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
+                                line_num, ch
+                            ))
+                        }
+                    }
+                    // advance iterator
+                    seg.next();
+                }
+            }
+        }
+
+        let count = seg.count();
+        Ok((output, ParserLine::continuation(context, count)))
     }
 }
 
@@ -796,13 +991,13 @@ fn is_hexdigit(query: Option<&&str>) -> bool {
 fn is_numeric(s: &str) -> bool {
     match s {
         "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => true,
-        _ => false
+        _ => false,
     }
 }
 
 fn is_octal(s: &str) -> bool {
     if s == "8" || s == "9" {
-        return false
+        return false;
     } else {
         is_numeric(s)
     }

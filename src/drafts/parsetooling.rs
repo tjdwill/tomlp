@@ -192,6 +192,11 @@ impl ParserLine {
         }
     }
 
+    pub fn empty_iter<'a>() -> TOMLSeg<'a> {
+        const EMPTY: &str = "";
+        EMPTY.graphemes(true).take(1).skip(1).peekable()
+    }
+
     /// segment the current line semantically
     /// Given some
     ///     key = value # comment
