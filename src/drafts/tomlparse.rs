@@ -621,7 +621,70 @@ impl TOMLParser {
     }
 
     fn dec_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
-        unimplemented!()
+        let line_num = context.line_num();
+        let mut seg = context.next_seg().unwrap();
+        let mut found_underscore = false;
+        // Check for leading zero
+        /*
+            A leading zero is one in which a zero is followed by any other digit or non-whitespace char.
+         */
+        let mut output: i64 = 0;
+        if let Some(&"0") = seg.peek() {
+            seg.next();
+            match seg.peek() {
+                Some(ch) => {
+                    match *ch {
+                        " " | "\t" | "\n" => (),
+                        _ => return Err(format!(
+                            "Line {}: Integer Parsing Error: No leading zeros.", line_num
+                        ))
+                    }
+                }
+                None => (),
+            }
+        } else {
+            // parse the number, checking for overflow
+            loop {
+                let previous = output;
+                match seg.peek() {
+                    None => break,
+                    Some(ch) => {
+                        match *ch {
+                            "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                                found_underscore = false; // is overwriting faster than doing a check every iteration?
+                                output = output
+                                    .wrapping_mul(10)
+                                    .wrapping_add(ch.parse::<i64>().unwrap());
+
+                                if previous > output {
+                                    return Err(format!("Line {}: Integer Parsing Error: Integer Overflow", line_num))
+                                }
+                            }
+                            "_" => {
+                                if found_underscore {
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
+                                    ))
+                                } else {
+                                    found_underscore = true;
+                                }
+                            }
+                            " " | "\t" | "\n" => break,  // NOTE: Don't need to check for comment symbol '#' because it would appear in a separate line segment.
+                            _ => return Err(format!(
+                                "Line {}: Integer Parsing Error: Invalid digit value '{}'.", line_num, ch
+                            ))
+                        }
+                        // advance iterator
+                        seg.next();
+                    }
+                }
+            }
+        }
+
+        let count = seg.count();
+        Ok((
+            output, ParserLine::continuation(context, count)
+        ))
     }
 
     fn nondec_parse(mode: String, mut context: ParserLine) -> Result<(i64, ParserLine), String> {
@@ -692,22 +755,22 @@ fn is_valid_comment_grapheme(s: &str) -> bool {
 
 fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
     // try to find 4 or 8 hexadecimal digits
-    const MIN_SEQ_LENGTH: i32 = 4;
-    const MAX_SEQ_LENGTH: i32 = 8;
+    const SMALL_SEQ_LENGTH: i32 = 4;
+    const LARGE_SEQ_LENGTH: i32 = 8;
 
     let mut hex_val = 0_u32;
-    let mut digits_parseed = 0;
+    let mut digits_parsed = 0;
 
-    while digits_parseed < MAX_SEQ_LENGTH {
+    while digits_parsed < LARGE_SEQ_LENGTH {
         if is_hexdigit(iter.peek()) {
             let digit = iter.next().unwrap();
             hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap();
-        } else if digits_parseed == MIN_SEQ_LENGTH {
+        } else if digits_parsed == SMALL_SEQ_LENGTH {
             break;
         } else {
             return None;
         }
-        digits_parseed += 1;
+        digits_parsed += 1;
     }
 
     std::char::from_u32(hex_val)
@@ -730,6 +793,20 @@ fn is_hexdigit(query: Option<&&str>) -> bool {
     }
 }
 
+fn is_numeric(s: &str) -> bool {
+    match s {
+        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => true,
+        _ => false
+    }
+}
+
+fn is_octal(s: &str) -> bool {
+    if s == "8" || s == "9" {
+        return false
+    } else {
+        is_numeric(s)
+    }
+}
 /// skip the whitespace at the current segment
 fn skip_ws(mut context: ParserLine) -> ParserLine {
     let mut seg = {
