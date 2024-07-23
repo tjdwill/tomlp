@@ -23,7 +23,7 @@ pub struct TOMLParser {
 }
 impl TOMLParser {
     // DEV Note: I think most functions will have to be made public for testing purposes.
-    // Since I don't actually want a user to be able to use the functions, this will likely be a 
+    // Since I don't actually want a user to be able to use the functions, this will likely be a
     // private module that is then imported for a stand-alone public `parse` function.
     ////////////////////////
     // Creation/Modification
@@ -569,37 +569,36 @@ impl TOMLParser {
                         // Try parsing non-decimal format
                         match seg.next() {
                             None => (),
-                            Some(prefix) => {
-                                match prefix {
-                                    " " | "\t" | "\n" => (),
+                            Some(prefix) => match prefix {
+                                " " | "\t" | "\n" => (),
 
-                                    "b" | "o" | "x" => {
-                                        if is_negative || plus_found {
-                                            return Err(format!(
+                                "b" | "o" | "x" => {
+                                    if is_negative || plus_found {
+                                        return Err(format!(
                                                 "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
                                             ));
-                                        }
-
-                                        let count = seg.count();
-                                        (output, context) = Self::nondec_parse(
-                                            prefix.to_string(),
-                                            ParserLine::continuation(context, count),
-                                        )?;
-                                        seg = {
-                                            match context.next_seg() {
-                                                None => ParserLine::empty_iter(),
-                                                Some(next) => next,
-                                            } 
-                                        }
                                     }
 
-                                    _ => {
-                                        return Err(format!(
-                                            "Line {}: Integer Parsing Error: No leading zeros.", line_num
-                                        ))
+                                    let count = seg.count();
+                                    (output, context) = Self::nondec_parse(
+                                        prefix.to_string(),
+                                        ParserLine::continuation(context, count),
+                                    )?;
+                                    seg = {
+                                        match context.next_seg() {
+                                            None => ParserLine::empty_iter(),
+                                            Some(next) => next,
+                                        }
                                     }
                                 }
-                            }
+
+                                _ => {
+                                    return Err(format!(
+                                        "Line {}: Integer Parsing Error: No leading zeros.",
+                                        line_num
+                                    ))
+                                }
+                            },
                         }
                     }
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
@@ -610,7 +609,7 @@ impl TOMLParser {
                             match context.next_seg() {
                                 None => ParserLine::empty_iter(),
                                 Some(next) => next,
-                            } 
+                            }
                         }
                     }
                     _ => {
@@ -624,7 +623,6 @@ impl TOMLParser {
             None => return Err(format!("Line {}: Invalid integer format.", line_num)),
         }
 
-        
         if is_negative {
             output = -output;
         }
@@ -647,9 +645,7 @@ impl TOMLParser {
             match seg.peek() {
                 Some(ch) => match *ch {
                     " " | "\t" | "\n" => (),
-                    _ => {
-                        
-                    }
+                    _ => {}
                 },
                 None => (),
             }
@@ -661,12 +657,13 @@ impl TOMLParser {
                     None => {
                         if found_underscore {
                             return Err(format!(
-                                "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                "Line {}: Integer Parsing Error: Underscore at end of integer.",
+                                line_num
                             ));
                         } else {
-                            break
-                        } 
-                    },
+                            break;
+                        }
+                    }
                     Some(ch) => {
                         match *ch {
                             "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
@@ -697,20 +694,19 @@ impl TOMLParser {
                                         "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
                                     ));
                                 } else {
-                                    break
+                                    break;
                                 }
                             }
                             _ => {
-                                
                                 if found_underscore {
                                     return Err(format!(
                                         "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
                                     ));
-                                } else{
+                                } else {
                                     return Err(format!(
                                         "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
                                         line_num, ch
-                                    ))
+                                    ));
                                 }
                             }
                         }
@@ -761,9 +757,7 @@ impl TOMLParser {
                         | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" => {
                             let digit = i64::from_str_radix(ch, 16).unwrap();
                             found_underscore = false; // is overwriting faster than doing a check every iteration?
-                            output = output
-                                .wrapping_mul(16)
-                                .wrapping_add(digit);
+                            output = output.wrapping_mul(16).wrapping_add(digit);
 
                             if previous > output {
                                 return Err(format!(

@@ -6,10 +6,22 @@ This is a journal for the purpose of tracking the progress for the TOML parser I
 
 Here is a living list of questions I have about the design:
 
-- How am I going to parse tokens that require lookahead (i.e. array of tables' `[[` and `]]` delimiters)
-- How am I going to find comments at the end of values?
-    - The permissibility of comments at the end of values definitely hinders methods that automatically parse valid TOML values. \**sigh*\*
-- How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
+- Q: How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
+
+- Q: How am I going to parse tokens that require lookahead (i.e. array of tables' `[[` and `]]` delimiters)
+    - A: I do this using the `Peekable` struct.
+- Q: How am I going to find comments at the end of values?
+    - A: I am currently grouping the current line into segments based on important character delimiters. `#` is one such delimiter, meaning segments beginning with it are either comments or part of a string (determined via context).
+- Q: Even assuming the different numeric TOML values are parsable, how do I determine which function to call to begin with?
+    - A: I'm currently considering a try-catch type of procedure, passing the current line to each function until a value is successfully parsed.
+
+## 23 July 2024
+
+Completed integer parsing and tested its functionality. So far, so good. I figured out that I also needed a way to express an empty iterator for the case in which the context ParserLine returns exhausted. I did so by creating a `TOMLSeg<'a>` from the empty `&str`.
+
+In terms of TOML values, I still need to figure out how to parse floats; dates; and the composite values, inline table and array. I don't think the latter can be done, however, until I decide how I will handle keys and the key context. How do I track what keys have been used and what key is in use currently? This will take a lot of thought.
+
+For float parsing, I won't do it by hand because I think handling the precision issues will be a nightmare. Instead, I need to find a way to get the current ParserLine segment into a form that is easily parsable using `str::parse::<f64>()`. Even still, will the method be able to handle TOML-specific float syntax?
 
 ## 18 July 2024
 
