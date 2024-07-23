@@ -1045,3 +1045,31 @@ fn parse_comment(mut context: ParserLine) -> Result<(), String> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_hexdigit() {
+        assert_eq!(false, is_hexdigit(Some(&"")));
+        assert_eq!(false, is_hexdigit(Some(&"T")));
+        assert_eq!(false, is_hexdigit(Some(&"J")));
+        assert_eq!(false, is_hexdigit(None));
+
+        for i in 0..10 {
+            let s = i.to_string();
+            assert_eq!(true, is_hexdigit(Some(&s.as_str())));
+        }
+
+        for i in 'a'..'g' {
+            let s = i.to_string();
+            assert_eq!(true, is_hexdigit(Some(&s.as_str())));
+        }
+
+        for i in 'A'..'G' {
+            let s = i.to_string();
+            assert_eq!(true, is_hexdigit(Some(&s.as_str())));
+        }
+    }
+}
