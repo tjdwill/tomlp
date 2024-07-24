@@ -1,9 +1,8 @@
-/// Prints all invalid chars for TOML strings. 
+/// Prints all invalid chars for TOML strings.
 /// Needed for instantiating a const array.
 fn main() {
     print_invalid_str_graphemes()
 }
-
 
 fn get_graphemes(s: &str) -> Vec<&str> {
     unicode_segmentation::UnicodeSegmentation::graphemes(s, true).collect::<Vec<_>>()

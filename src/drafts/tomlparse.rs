@@ -1,11 +1,11 @@
 // stdlib imports
 #![allow(unused_mut)]
+use chrono::format;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::iter::Peekable;
 use std::path::Path;
 use std::slice::RSplit;
-use chrono::format;
 // third-party imports
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -899,11 +899,11 @@ impl TOMLParser {
     }
 
     pub fn parse_float(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
-        // Assume a non-empty context.        
-        // This isn't one-to-one with the TOML spec, but, honestly, I will accept it. 
+        // Assume a non-empty context.
+        // This isn't one-to-one with the TOML spec, but, honestly, I will accept it.
         // It beats the alternative of manually parsing IEE 754 binary64 floats.
 
-       let removable = |x: &&str| {
+        let removable = |x: &&str| {
             let x = *x;
             if x == " " || x == "\t" || x == "\n" || x == "_" {
                 false
@@ -913,31 +913,24 @@ impl TOMLParser {
         };
 
         // Check for basic formatting issues
-        let mut format_check_iter = context
-            .peek()
-            .unwrap()
-            .filter(removable);
+        let mut format_check_iter = context.peek().unwrap().filter(removable);
         if let Some(".") = format_check_iter.next() {
             return Err(format!(
-                "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`", context.line_num()
-            ))
+                "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
+                context.line_num()
+            ));
         } else if let Some(".") = format_check_iter.last() {
             return Err(format!(
-                "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`", context.line_num()
-            ))
+                "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
+                context.line_num()
+            ));
         }
 
-
         let seg = context.next_seg().unwrap();
-        let result = seg
-            .filter(removable)
-            .collect::<String>()
-            .parse::<f64>();
+        let result = seg.filter(removable).collect::<String>().parse::<f64>();
         match result {
             Ok(val) => Ok((TOMLType::Float(val), context)),
-            Err(_) => Err(format!(
-                "Line {}: Float Parsing Error.", context.line_num()
-            ))
+            Err(_) => Err(format!("Line {}: Float Parsing Error.", context.line_num())),
         }
     }
 }
