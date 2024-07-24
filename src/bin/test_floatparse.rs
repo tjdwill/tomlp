@@ -2,7 +2,8 @@ use tomlp::drafts::{parsetools::ParserLine, tokens::TOMLType, tomlparse::TOMLPar
 
 type TestRet = Result<(), String>;
 fn main() -> TestRet {
-    test_float()
+    test_float()?;
+    nan_test()
 }
 
 fn test_float() -> TestRet {
@@ -48,6 +49,17 @@ fn test_float() -> TestRet {
         i += 1;
     }
     Ok(())
-    // f64::NAN, f64::NAN, f64::NAN,
-    //  "nan", "+nan", "-nan",
+}
+
+fn nan_test() -> TestRet {
+    const NAN_STRS: [&str; 3] = ["nan", "+nan", "-nan"];
+    for s in NAN_STRS {
+        let pline = ParserLine::new(s.to_string(), 0);
+        let result = TOMLParser::parse_float(pline)?.0;
+        match result {
+            TOMLType::Float(val) => assert_eq!(true, val.is_nan()),
+            _ => return Err(String::from("Will never reach here.")),
+        }
+    }
+    Ok(())
 }
