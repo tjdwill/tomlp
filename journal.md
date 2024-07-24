@@ -23,6 +23,11 @@ In terms of TOML values, I still need to figure out how to parse floats; dates; 
 
 For float parsing, I won't do it by hand because I think handling the precision issues will be a nightmare. Instead, I need to find a way to get the current ParserLine segment into a form that is easily parsable using `str::parse::<f64>()`. Even still, will the method be able to handle TOML-specific float syntax?
 
+### UPDATE
+
+I got float parsing to work, PY. I basically used a shortcut, filtering the grapheme iterator into a String and subsequently calling the `f64` parse function.
+I think I may need to consider using the same method for parsing dates via `chrono` if possible. What a fortuitous success!
+
 ## 18 July 2024
 
 Major code reorganization. Implemented basic and multi-line string parsing. Literal string parsing comes at a later date.
