@@ -15,6 +15,16 @@ Here is a living list of questions I have about the design:
 - Q: Even assuming the different numeric TOML values are parsable, how do I determine which function to call to begin with?
     - A: I'm currently considering a try-catch type of procedure, passing the current line to each function until a value is successfully parsed.
 
+---
+
+## 24 July 2024
+
+I prototyped parsing of dates and booleans. For the former, I used the same method as done for floats—get the data in a representation that can then be passed to the external parsing function. For booleans, I avoided this method because I didn't feel it warranted the extra allocation. I'm still exploring the balance between premature optimization and "mature" taste. 
+
+Nevertheless, I still need to implement the prototypes into the `TOMLParser` type. After that, the atomic TOML values should be done (i.e. independently parsable given correct input). After that, there's going to be a lull as I hammer out my design and thinking for handling keys. I have to figure this out first in order to parse arrays and inline tables. This stage is also important for determining how to *access* the data given a successful parsing operation.
+
+Basically, things are about to get real.
+
 ## 23 July 2024
 
 Completed integer parsing and tested its functionality. So far, so good. I figured out that I also needed a way to express an empty iterator for the case in which the context ParserLine returns exhausted. I did so by creating a `TOMLSeg<'a>` from the empty `&str`.
@@ -36,7 +46,20 @@ Major code reorganization. Implemented basic and multi-line string parsing. Lite
 
 I think I may have finally stumbled upon my desired struct that allows for the parsing context to be passed around. A major impediment to progress was the inability to pass around the `TOMLSeg<'a>` iterator, especially mid-iteration. To solve this, I modified `ParserLine` to be able to reconstruct the iterator with the necessary offset. 
 
-This may be a more general lesson for Rust. It is likely better to "compress" the data such that, instead of passing along a state, you pass an object that can reconstruct said state.
+This may be a more general lesson for Rust. It is likely better to "compress" the data such that, instead of passing along a state, you pass an object that can reconstruct said state. I've written the new implementation below:
+
+```rust
+#[derive(Debug)]
+pub struct ParserLine {
+    line_num: usize,
+    data: String,
+// iteration things
+    seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
+    iter_limit: usize,    // The iteration termination value
+    curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
+    remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
+}
+```
 
 ## 16 July 2024
 
@@ -79,7 +102,7 @@ struct ParseContext<'a> {
 
 This is the incorrect approach because the lifetime of `ParseContext` depends on the lifetimes of the references in `graphemes` (which depend on curr_line, but I don't think the compiler knows that). Once graphemes is initialized for the first time, the references within can't be removed--the lifetime annotation promises the references will be valid for at least as long as the `ParseContext` lives.
 
-The only solution I tried to make this work resulted in the entire struct being borrowed for the duration of the lifetime, meaning I could not update it.
+The only solution I tried to make this work resulted is the entire struct being borrowed for the duration of the lifetime, meaning I could not update it.
 
 ### Solution
 
@@ -281,7 +304,7 @@ The above would be the User API (Public API). The developer (Private) API will l
 
 Things I need to do:
 
-- [ ] Load file
+- [x] Load file
 - [ ] Generate tokens
 - [ ] Write Parser Functions
 - [ ] Assemble Table Structure
