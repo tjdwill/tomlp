@@ -1,5 +1,5 @@
 /// Testing out my idea for parsing all of the local datetime formats in TOML
-use chrono::{NaiveDateTime, NaiveDate, NaiveTime}; // 0.4.38
+use chrono::{DateTime, FixedOffset, NaiveDateTime, NaiveDate, NaiveTime}; // 0.4.38
 
 fn main() {
     test_date_parse();
@@ -7,7 +7,10 @@ fn main() {
 
 
 fn try_naive_dtparse(s: &str) -> Option<Token> {
-    if let Some(val) = try_naive_datetime(s) {
+    if let Ok(val) = DateTime::parse_from_rfc3339(s) {
+        Some(Token::DateTime(val))
+    }
+    else if let Some(val) = try_naive_datetime(s) {
         Some(Token::NDateTime(val))
     } 
     else if let Some(val) = try_naive_date(s) {
@@ -60,7 +63,8 @@ fn try_naive_time(s: &str) -> Option<NaiveTime> {
 }
 
 fn test_date_parse() {
-    let test_bank: [&str; 7] = [
+    let test_bank: [&str; 10] = [
+        "1979-05-27T00:32:00.999999-07:00", "1979-05-27T07:32:00Z", "1979-05-27T00:32:00-07:00",
         "1979-05-27T00:32:00.999999", "1979-05-27T00:32:00",
         "1979-05-27 00:32:00.999999", "1979-05-27 00:32:01",
         "1979-05-27", "07:32:00", "00:32:00.999999",
@@ -76,6 +80,7 @@ fn test_date_parse() {
 
 #[derive(Debug)]
 enum Token {
+    DateTime(DateTime<FixedOffset>),
     NDateTime(NaiveDateTime),
     NDate(NaiveDate),
     NTime(NaiveTime),
