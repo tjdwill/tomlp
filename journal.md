@@ -17,6 +17,37 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 25 July 2024
+
+A Reddit comment now has me thinking about how I could have designed my parse tooling to be more effective. Specifically, since I think about and operate over a line in terms of *segments*, I should have considered making a segment type. Well, in fact I did, but it is simply an alias for the iterator type I'm using. What would have been useful, however, is identifying the type of the segment: comment, key, table, string, int, float, date, etc. This may have introduced a more ergonomic parsing design to more easily determine which function to call, especially for types that take similar forms (ints, floats, and dates).
+
+Maybe I could have done something like:
+
+```rust
+struct TOMLSeg<'a> {
+    content: &'a str,
+    label: SegType,
+}
+impl<'a> TOMLSeg<'a>{
+    // functions here
+}
+
+enum SegType {
+    Int,
+    Float,
+    Date,  // may split into three sub-categories: NaiveDate, NaiveTime, and DateTime
+    Comment, 
+    Key,
+    Table, 
+    InlineTable, 
+    String,
+    Bool,
+    // etcetera
+}
+```
+
+Since I iterate over the line anyway when creating a `ParserLine` from scratch, I could have a vector of `SegType`s as well...right? Then, iteration over `ParserLine` would produce `TOMLSeg`s which can then produce an iterator `Peekable<Take<Skip<Graphemes<'a>>>>` as necessary.
+
 ## 24 July 2024
 
 I prototyped parsing of dates and booleans. For the former, I used the same method as done for floats—get the data in a representation that can then be passed to the external parsing function. For booleans, I avoided this method because I didn't feel it warranted the extra allocation. I'm still exploring the balance between premature optimization and "mature" taste. 
