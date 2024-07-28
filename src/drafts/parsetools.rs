@@ -301,7 +301,7 @@ mod tests {
         assert_eq!(Some(&"h"), seg.peek());
         let count = seg.count();
 
-        pline = ParserLine::continuation(pline, count);
+        pline = ParserLine::freeze(pline, count);
         seg = pline.next_seg().unwrap();
         assert_eq!("h", seg.next().unwrap());
     }
