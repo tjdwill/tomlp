@@ -29,6 +29,12 @@ I created a more concrete `TOMLSeg` type. This type contains the segment as a sl
 
 I still need to properly test the new structure (and adjust the code accordingly), but I like this design much more. The bad news is that I can't directly label the segment for types such as dates. As a happy medium, however, because I now store the entire segment as a &str, I can analyze the slice for type-specific characters such as `:` to determine the type, obviating the need to use a brute-force approach.
 
+```rust
+struct TOMLSeg<'a> {
+    content: &'a str,
+    iter: Peekable<Graphemes<'a>>,
+}
+```
 
 ## 25 July 2024
 
