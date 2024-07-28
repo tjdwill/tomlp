@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables, unused_imports, unused_mut)]
-use tomlp::drafts::parsetooling::ParserLine;
+use tomlp::drafts::parsetools::ParserLine;
 use tomlp::drafts::tomlparse::TOMLParser;
 
 const FILE: &str = "test_resources/blank.toml";

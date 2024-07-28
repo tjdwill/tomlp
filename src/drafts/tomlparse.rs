@@ -11,7 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
-use super::parsetooling::{ParserLine, TOMLSeg};
+use super::parsetools::{ParserLine, TOMLSeg};
 pub use super::tokens::{TOMLTable, TOMLType};
 
 static EOF_ERROR: &str = "End of File during parsing operation.";
@@ -176,7 +176,7 @@ impl TOMLParser {
         let count = seg.count();
         Ok((
             TOMLType::LitStr(grapheme_pool),
-            ParserLine::continuation(context, count),
+            ParserLine::freeze(context, count),
         ))
     }
 
@@ -232,7 +232,7 @@ impl TOMLParser {
             .take(graphemes_added - 3)
             .collect::<String>();
         let count = seg.count();
-        let context = ParserLine::continuation(context, count);
+        let context = ParserLine::freeze(context, count);
         Ok((TOMLType::MultiLitStr(outstring), context))
     }
 
@@ -269,7 +269,7 @@ impl TOMLParser {
                             // escape sequence
                             let count = seg.count();
                             let (ch, pline, inc_delim) = self.parse_multi_escape_sequence(
-                                ParserLine::continuation(context, count),
+                                ParserLine::freeze(context, count),
                             )?;
 
                             if inc_delim {
@@ -315,7 +315,7 @@ impl TOMLParser {
             .take(graphemes_added - 3)
             .collect::<String>();
         let count = seg.count();
-        let context = ParserLine::continuation(context, count);
+        let context = ParserLine::freeze(context, count);
         Ok((TOMLType::MultiStr(outstring), context))
     }
 
@@ -346,7 +346,7 @@ impl TOMLParser {
                         "\"" => break,
                         "\\" => {
                             let count = seg.count();
-                            match Self::parse_basic_escape_sequence(ParserLine::continuation(
+                            match Self::parse_basic_escape_sequence(ParserLine::freeze(
                                 context, count,
                             )) {
                                 None => {
@@ -391,7 +391,7 @@ impl TOMLParser {
         let count = seg.count();
         Ok((
             TOMLType::BasicStr(grapheme_pool),
-            ParserLine::continuation(context, count),
+            ParserLine::freeze(context, count),
         ))
     }
 
@@ -439,7 +439,7 @@ impl TOMLParser {
                 } else {
                     // find next non-whitespace char
                     let count = seg.count();
-                    match self.get_nonwhitespace(ParserLine::continuation(context, count)) {
+                    match self.get_nonwhitespace(ParserLine::freeze(context, count)) {
                         Ok((ch, context)) => {
                             if ch == '\"' {
                                 return Ok((ch, context, true)); // important termination condition
@@ -453,7 +453,7 @@ impl TOMLParser {
             }
         }
         let count = seg.count();
-        return Ok((outchar, ParserLine::continuation(context, count), false));
+        return Ok((outchar, ParserLine::freeze(context, count), false));
     }
 
     fn parse_basic_escape_sequence(mut context: ParserLine) -> Option<(char, ParserLine)> {
@@ -486,7 +486,7 @@ impl TOMLParser {
             None => return None,
         }
         let count = seg.count();
-        Some((outchar, ParserLine::continuation(context, count)))
+        Some((outchar, ParserLine::freeze(context, count)))
     }
 
     /// Proceeds to the next non-whitespace character in the buffer.
@@ -511,7 +511,7 @@ impl TOMLParser {
                     let ch = ch.chars().next().unwrap();
                     if !ch.is_whitespace() {
                         let count = seg.count();
-                        return Ok((ch, ParserLine::continuation(context, count)));
+                        return Ok((ch, ParserLine::freeze(context, count)));
                     } else {
                         continue;
                     }
@@ -583,7 +583,7 @@ impl TOMLParser {
                                     let count = seg.count();
                                     (output, context) = Self::nondec_parse(
                                         prefix.to_string(),
-                                        ParserLine::continuation(context, count),
+                                        ParserLine::freeze(context, count),
                                     )?;
                                     seg = {
                                         match context.next_seg() {
@@ -605,7 +605,7 @@ impl TOMLParser {
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                         let count = seg.count();
                         (output, context) =
-                            Self::dec_parse(ParserLine::continuation(context, count))?;
+                            Self::dec_parse(ParserLine::freeze(context, count))?;
                         seg = {
                             match context.next_seg() {
                                 None => ParserLine::empty_iter(),
@@ -628,7 +628,7 @@ impl TOMLParser {
             output = -output;
         }
         let count = seg.count();
-        context = ParserLine::continuation(context, count);
+        context = ParserLine::freeze(context, count);
         Ok((TOMLType::Int(output), context))
     }
 
@@ -719,7 +719,7 @@ impl TOMLParser {
         }
 
         let count = seg.count();
-        Ok((output, ParserLine::continuation(context, count)))
+        Ok((output, ParserLine::freeze(context, count)))
     }
 
     // REFACTOR POT.: I could remove the three nondec functions and instead have three different const arrays of valid
@@ -791,7 +791,7 @@ impl TOMLParser {
         }
 
         let count = seg.count();
-        Ok((output, ParserLine::continuation(context, count)))
+        Ok((output, ParserLine::freeze(context, count)))
     }
 
     fn oct_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
@@ -843,7 +843,7 @@ impl TOMLParser {
         }
 
         let count = seg.count();
-        Ok((output, ParserLine::continuation(context, count)))
+        Ok((output, ParserLine::freeze(context, count)))
     }
 
     fn bin_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
@@ -895,7 +895,7 @@ impl TOMLParser {
         }
 
         let count = seg.count();
-        Ok((output, ParserLine::continuation(context, count)))
+        Ok((output, ParserLine::freeze(context, count)))
     }
 
     pub fn parse_float(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
@@ -1054,7 +1054,7 @@ fn skip_ws(mut context: ParserLine) -> ParserLine {
         }
     }
     let count = seg.count();
-    ParserLine::continuation(context, count)
+    ParserLine::freeze(context, count)
 }
 
 fn parse_comment(mut context: ParserLine) -> Result<(), String> {

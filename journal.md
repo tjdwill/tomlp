@@ -17,6 +17,19 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 27 July 2024
+
+Just for fun, I tried to modify `ParserLine::find_segments` to label the segments semantically. However, I discovered that this is a very difficult task. Because a given delimiter character such as `[` have different functions within different contexts, it's hard to determine what the label should be. This is especially true given that the current line's context cannot be determined when considering multi-line values.
+
+Even more impeding is the fact that some values themselves can contain keys and values (inline tables, arrays [via inline tables]). 
+
+### TOMLSeg
+
+I created a more concrete `TOMLSeg` type. This type contains the segment as a slice of the entire string, allowing for operations such as trimming, replacing, etc. without needing to allocate a String first. It also serves as a casing for the iterator over the graphemes. Since I can now create the graphemes from the slice itself, I don't need to use `Take` or `Skip` to create the iterator. Therefore, it is now of type `Peekable<Graphemes<'a>>`. 
+
+I still need to properly test the new structure (and adjust the code accordingly), but I like this design much more. The bad news is that I can't directly label the segment for types such as dates. As a happy medium, however, because I now store the entire segment as a &str, I can analyze the slice for type-specific characters such as `:` to determine the type, obviating the need to use a brute-force approach.
+
+
 ## 25 July 2024
 
 A Reddit comment now has me thinking about how I could have designed my parse tooling to be more effective. Specifically, since I think about and operate over a line in terms of *segments*, I should have considered making a segment type. Well, in fact I did, but it is simply an alias for the iterator type I'm using. What would have been useful, however, is identifying the type of the segment: comment, key, table, string, int, float, date, etc. This may have introduced a more ergonomic parsing design to more easily determine which function to call, especially for types that take similar forms (ints, floats, and dates).
