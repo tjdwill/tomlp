@@ -1,5 +1,4 @@
 /// Testing parsing boolean values. Written in a manner to prevent extra allocation.
-#![allow(unused)]
 use std::iter::{Peekable, Skip, Take};
 use unicode_segmentation::{UnicodeSegmentation as utf8, Graphemes}; // 1.11.0
 

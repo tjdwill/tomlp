@@ -294,7 +294,7 @@ mod tests {
     
     fn test_continuity() {
         let mut pline = ParserLine::new("This is a test".to_string(), 0);
-        let mut seg = pline.next_seg();
+        let seg = pline.next_seg();
         println!("\n{:?}", seg);
         let mut seg = seg.unwrap();
         assert_eq!(Some("T"), seg.next());

@@ -587,7 +587,7 @@ impl TOMLParser {
                                     )?;
                                     seg = {
                                         match context.next_seg() {
-                                            None => ParserLine::empty_iter(),
+                                            None => TOMLSeg::default(),
                                             Some(next) => next,
                                         }
                                     }
@@ -608,7 +608,7 @@ impl TOMLParser {
                             Self::dec_parse(ParserLine::freeze(context, count))?;
                         seg = {
                             match context.next_seg() {
-                                None => ParserLine::empty_iter(),
+                                None => TOMLSeg::default(),
                                 Some(next) => next,
                             }
                         }
