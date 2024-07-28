@@ -1,7 +1,6 @@
 /// Testing parsing boolean values. Written in a manner to prevent extra allocation.
 use std::iter::{Peekable, Skip, Take};
-use unicode_segmentation::{UnicodeSegmentation as utf8, Graphemes}; // 1.11.0
-
+use unicode_segmentation::{Graphemes, UnicodeSegmentation as utf8}; // 1.11.0
 
 fn main() {
     let test = "  false  \n";
@@ -10,12 +9,8 @@ fn main() {
 }
 
 fn parse_bool(s: &str) -> Option<bool> {
-    let mut seg = s
-        .graphemes(true)
-        .take(100)
-        .skip(0)
-        .peekable();
-        
+    let mut seg = s.graphemes(true).take(100).skip(0).peekable();
+
     skip_ws(&mut seg);
     match seg.peek() {
         None => None,
@@ -26,68 +21,63 @@ fn parse_bool(s: &str) -> Option<bool> {
                         match seg.next() {
                             Some(grapheme) => {
                                 if grapheme != c {
-                                    return None
+                                    return None;
                                 }
                             }
-                            None => return None
+                            None => return None,
                         }
                     }
                     // exhaust iterator
                     loop {
                         match seg.next() {
-                            Some(val) => {
-                                match val {
-                                    " " | "\t" | "\n" => continue,
-                                    _ => return None
-                                }
-                            }
-                            None => break
+                            Some(val) => match val {
+                                " " | "\t" | "\n" => continue,
+                                _ => return None,
+                            },
+                            None => break,
                         }
                     }
-                    return Some(true)
+                    return Some(true);
                 }
                 "f" => {
                     for c in "false".graphemes(true) {
                         match seg.next() {
                             Some(grapheme) => {
                                 if grapheme != c {
-                                    return None
+                                    return None;
                                 }
                             }
-                            None => return None
+                            None => return None,
                         }
                     }
                     // exhaust iterator
                     loop {
                         match seg.next() {
-                            Some(val) => {
-                                match val {
-                                    " " | "\t" | "\n" => continue,
-                                    _ => return None
-                                }
-                            }
-                            None => break
+                            Some(val) => match val {
+                                " " | "\t" | "\n" => continue,
+                                _ => return None,
+                            },
+                            None => break,
                         }
                     }
-                    return Some(false)
+                    return Some(false);
                 }
-                _ => return None
+                _ => return None,
             }
         }
     }
 }
 
-
 fn skip_ws(seg: &mut Peekable<Skip<Take<Graphemes<'_>>>>) {
     loop {
         match seg.peek() {
             None => break,
-            Some(ch) => {
-                match *ch {
-                    " " | "\t" | "\n" => {seg.next();},
-                    _ => break
+            Some(ch) => match *ch {
+                " " | "\t" | "\n" => {
+                    seg.next();
                 }
-            }
+                _ => break,
+            },
         }
     }
 }

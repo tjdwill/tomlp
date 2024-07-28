@@ -1,14 +1,11 @@
 // stdlib imports
 #![allow(unused_mut)]
-use chrono::format;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
-use std::iter::Peekable;
 use std::path::Path;
-use std::slice::RSplit;
 // third-party imports
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
-
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
 use super::parsetools::{ParserLine, TOMLSeg};
@@ -68,7 +65,7 @@ impl TOMLParser {
         self.buffer.clear();
         match self.reader.read_line(&mut self.buffer) {
             Ok(0) => return Ok(false),
-            Ok(sz) => {
+            Ok(_sz) => {
                 self.line_num += 1;
                 return Ok(true);
             }
@@ -106,7 +103,7 @@ impl TOMLParser {
         // determine if the multi-string delimiter is present.
         // UNWRAP justification: a " character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
-        for i in 0..3 {
+        for _ in 0..3 {
             if let Some(&STR_TOKEN) = seg.peek() {
                 seg.next();
                 continue;
@@ -122,7 +119,7 @@ impl TOMLParser {
     ) -> Result<(TOMLType, ParserLine), String> {
         // UNWRAP justification: a " character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
-        for i in 0..3 {
+        for _ in 0..3 {
             if let Some(&LITERAL_STR_TOKEN) = seg.peek() {
                 seg.next();
                 continue;
@@ -190,7 +187,7 @@ impl TOMLParser {
         let mut grapheme_pool = String::with_capacity(sz);
 
         let mut seg = context.next_seg().unwrap();
-        for i in 0..3 {
+        for _ in 0..3 {
             seg.next();
         }
         // trim immediate newline
@@ -246,7 +243,7 @@ impl TOMLParser {
         let mut grapheme_pool = String::with_capacity(sz);
 
         let mut seg = context.next_seg().unwrap();
-        for i in 0..3 {
+        for _ in 0..3 {
             seg.next();
         }
         // trim immediate newline
@@ -268,9 +265,8 @@ impl TOMLParser {
                         "\\" => {
                             // escape sequence
                             let count = seg.count();
-                            let (ch, pline, inc_delim) = self.parse_multi_escape_sequence(
-                                ParserLine::freeze(context, count),
-                            )?;
+                            let (ch, pline, inc_delim) = self
+                                .parse_multi_escape_sequence(ParserLine::freeze(context, count))?;
 
                             if inc_delim {
                                 quote_count += 1;
@@ -604,8 +600,7 @@ impl TOMLParser {
                     }
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                         let count = seg.count();
-                        (output, context) =
-                            Self::dec_parse(ParserLine::freeze(context, count))?;
+                        (output, context) = Self::dec_parse(ParserLine::freeze(context, count))?;
                         seg = {
                             match context.next_seg() {
                                 None => TOMLSeg::default(),

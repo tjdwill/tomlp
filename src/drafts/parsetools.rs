@@ -1,11 +1,8 @@
-fn main() {
-    tests::main();
-}
-
+#![allow(unused_imports)]
 //stdlib imports
 use std::iter::Peekable;
 // third-party imports
-use unicode_segmentation::{Graphemes, GraphemeIndices, UnicodeSegmentation as utf8};
+use unicode_segmentation::{GraphemeIndices, Graphemes, UnicodeSegmentation as utf8};
 // internal imports
 use super::constants::{
     COMMENT_TOKEN, INLINETAB_CLOSE_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, LITERAL_STR_TOKEN,
@@ -33,10 +30,24 @@ impl<'a> TOMLSeg<'a> {
     pub fn content(&self) -> &str {
         self.content
     }
-    
+
     // Retrieve a preview of the next iterable item.
     pub fn peek(&mut self) -> Option<&&str> {
         self.iter.peek()
+    }
+
+    pub fn skip_ws(&mut self) {
+        loop {
+            match self.peek() {
+                None => break,
+                Some(ch) => match *ch {
+                    " " | "\t" => {
+                        self.next();
+                    }
+                    _ => break,
+                },
+            }
+        }
     }
 }
 impl<'a> Iterator for TOMLSeg<'a> {
@@ -54,13 +65,13 @@ impl<'a> Default for TOMLSeg<'a> {
 /// A type for maintaining the parser's state.
 #[derive(Debug, Clone)]
 pub struct ParserLine {
-    data: String,               // the current line
-    line_num: usize,            // line's file location
+    data: String,    // the current line
+    line_num: usize, // line's file location
     // iteration things
-    seg_nums: Vec<usize>,       // a vector of what is essentially cursor positions to denote segment ranges.
-    byte_nums: Vec<usize>,      // a vector of byte offsets to enable segment slice construction
-    iter_limit: usize,          // The iteration terminal value
-    curr_seg_num: usize,        // x: 0 <= x <= iter_limit;
+    seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
+    byte_nums: Vec<usize>, // a vector of byte offsets to enable segment slice construction
+    iter_limit: usize,    // The iteration terminal value
+    curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
     remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
 }
 impl ParserLine {
@@ -239,7 +250,7 @@ impl ParserLine {
                     if iter.peek().is_none() {
                         panic!("<ParserLine::find_segments>: Premature EoF.");
                     }
-                    let (next_offset, next_ch_peek) = iter.peek().unwrap();
+                    let (next_offset, _) = iter.peek().unwrap();
                     byte_nums.push(*next_offset);
                     seg_nums.push(graphemes + 1);
                 }
@@ -269,6 +280,7 @@ impl ParserLine {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::ParserLine;
     /////////////
@@ -276,7 +288,6 @@ mod tests {
     /////////////
 
     pub fn main() {
-        test_continuity();
         let s = "==#[]{}".to_string();
 
         print_segs(s.as_str());
@@ -297,7 +308,8 @@ mod tests {
         }
         println!("\n");
     }
-    
+
+    #[test]
     fn test_continuity() {
         let mut pline = ParserLine::new("This is a test".to_string(), 0);
         let seg = pline.next_seg();
@@ -310,5 +322,11 @@ mod tests {
         pline = ParserLine::freeze(pline, count);
         seg = pline.next_seg().unwrap();
         assert_eq!("h", seg.next().unwrap());
+    }
+
+    #[test]
+    fn test_blank_pline() {
+        let mut blank = ParserLine::new("".to_string(), 0);
+        assert_eq!(blank.next_seg().is_none(), true);
     }
 }
