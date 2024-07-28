@@ -69,7 +69,13 @@ impl ParserLine {
         // the iter_limit is set to 1 less than the number of elements in
         // the seg_num vector. This is because in the actual iteration, I
         // poll seg_num[i] and seg_num[i+1] in a given iteration.
-        let iter_limit = std::cmp::max(seg_nums.len() - 1, 0);
+        let iter_limit = {
+            if seg_nums.is_empty() {
+                0
+            } else {
+                seg_nums.len() - 1 
+            }
+        };
         Self {
             data: input,
             line_num,
