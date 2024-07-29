@@ -2,7 +2,7 @@
 // Imports
 //////////
 
-use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
+use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime, NaiveDateTime};
 use std::collections::HashMap;
 
 /////////////////
@@ -31,6 +31,7 @@ pub enum TOMLType {
     // Dates
     Date(NaiveDate),
     Time(NaiveTime),
+    NaiveDateTime(NaiveDateTime),
     TimeStamp(DateTime<FixedOffset>),
     // Collections
     Array(Vec<Self>),

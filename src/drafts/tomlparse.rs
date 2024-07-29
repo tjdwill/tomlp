@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, NaiveDateTime};
 use unicode_segmentation::UnicodeSegmentation;
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
@@ -950,12 +950,80 @@ impl TOMLParser {
             )),
         }
     }
+
+
+    pub fn parse_date(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+        let mut seg = context.next_seg().unwrap();
+        let test_str = seg.content().trim();
+        match try_naive_dtparse(test_str) {
+            Some(date) => Ok((date, ParserLine::freeze(context, 0))),
+            None => Err(format!(
+                "Line {}: Could not parse a datetime",  context.line_num()
+            )),
+        }
+    }
+
 }
 
 ///////////////////
 // Helper Functions
 ///////////////////
 
+// Dates
+
+fn try_naive_dtparse(s: &str) -> Option<TOMLType> {
+    if let Ok(val) = DateTime::parse_from_rfc3339(s) {
+        Some(TOMLType::TimeStamp(val))
+    } else if let Some(val) = try_naive_datetime(s) {
+        Some(TOMLType::NaiveDateTime(val))
+    } else if let Some(val) = try_naive_date(s) {
+        Some(TOMLType::Date(val))
+    } else if let Some(val) = try_naive_time(s) {
+        Some(TOMLType::Time(val))
+    } else {
+        None
+    }
+}
+
+fn try_naive_datetime(s: &str) -> Option<NaiveDateTime> {
+    const NAIVEDATETIME_FORMATS: [&str; 4] = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S.%f",
+    ];
+
+    for format in NAIVEDATETIME_FORMATS {
+        match NaiveDateTime::parse_from_str(s, format) {
+            Ok(val) => return Some(val),
+            Err(_) => (),
+        }
+    }
+    None
+}
+
+fn try_naive_date(s: &str) -> Option<NaiveDate> {
+    const NAIVEDATE_FORMAT: &str = "%Y-%m-%d";
+
+    match NaiveDate::parse_from_str(s, NAIVEDATE_FORMAT) {
+        Ok(val) => return Some(val),
+        Err(_) => None,
+    }
+}
+
+fn try_naive_time(s: &str) -> Option<NaiveTime> {
+    const NAIVETIME_FORMATS: [&str; 2] = ["%H:%M:%S.%f", "%H:%M:%S"];
+
+    for format in NAIVETIME_FORMATS {
+        match NaiveTime::parse_from_str(s, format) {
+            Ok(val) => return Some(val),
+            Err(_) => (),
+        }
+    }
+    None
+}
+
+// Grapheme things
 fn is_valid_str_grapheme(s: &str) -> bool {
     const CHARS: [&str; 32] = [
         "\0", "\u{1}", "\u{2}", "\u{3}", "\u{4}", "\u{5}", "\u{6}", "\u{7}", "\u{8}", "\n",
