@@ -905,19 +905,12 @@ impl TOMLParser {
         let mut seg = context.next_seg().unwrap();
 
         let str_check = seg.content().trim();
-        if str_check == "true" {
-            output = Some(true);
-        } else if str_check == "false" {
-            output = Some(false);
-        } else {
-            output = None;
-        }
+        output = str_check.parse::<bool>().ok();
 
         match output {
             Some(val) => {
                 // the segment is technically exhausted, so pass zero to freeze.
                 let context = ParserLine::freeze(context, 0);
-
                 Ok((TOMLType::Bool(val), context))
             }
             None => Err(format!(

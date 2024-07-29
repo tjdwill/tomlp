@@ -18,6 +18,8 @@ Once this is installed, download the extensions:
 
 ### CoC Setup
 
+**HELP**: Once installed, run `:help coc-nvim`
+
 Assume vim-plug and Node.js are both installed and available.
 
 1. specify coc.nvim in your package manager.
@@ -28,9 +30,10 @@ Plug 'neoclide/coc.nvim', {'branch': 'release'},
 
 2. Install via `:PlugInstall`
 3. Install `coc-rust-analyzer` via `:CocInstall coc-rust-analyzer`
-4. Source the [example configuration](https://github.com/neoclide/coc.nvim#example-vim-configuration) in your vimrc or paste it directly. 
+4. Install `coc-json` for Config (add `autocmd FileType json syntax match Comment +\/\/.\+$+` to VIMRC to fix comment highlighting)
+5. Source the [example configuration](https://github.com/neoclide/coc.nvim#example-vim-configuration) in your vimrc or paste it directly. 
     - Important for Tab completion and other features.
-5. Add the following to `:CocConfig` to control what is checked by cargo clean.
+6. Add the following to `:CocConfig` to control what is checked by cargo clean.
 
 ```json
     "workspace.ignoredFolders": [
