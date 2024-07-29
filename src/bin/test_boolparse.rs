@@ -1,12 +1,7 @@
 #![allow(dead_code, unused_variables, unused_imports, unused_mut)]
-use tomlp::drafts::{
-    tomlparse::TOMLParser,
-    parsetools::ParserLine,
-    tokens::TOMLType,
-};
+use tomlp::drafts::{parsetools::ParserLine, tokens::TOMLType, tomlparse::TOMLParser};
 
 fn main() -> Result<(), String> {
-
     let mut parser = TOMLParser::init("test_resources/bool.toml")?;
     let mut test = false;
     while let Ok(pline) = parser.next_parserline() {
@@ -17,6 +12,4 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
-
 }
-

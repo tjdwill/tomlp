@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, NaiveDateTime};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
@@ -46,7 +46,6 @@ impl TOMLParser {
                     return Err("File does not exist.".to_string());
                 } else if ext != toml_ext {
                     return Err("Incorrect file extension.".to_string());
-                } else {
                 }
             }
             None => return Err("Incorrect file extension.".to_string()),
@@ -64,18 +63,16 @@ impl TOMLParser {
     pub fn next_line(&mut self) -> Result<bool, String> {
         self.buffer.clear();
         match self.reader.read_line(&mut self.buffer) {
-            Ok(0) => return Ok(false),
+            Ok(0) => Ok(false),
             Ok(_sz) => {
                 self.line_num += 1;
-                return Ok(true);
+                Ok(true)
             }
-            Err(err) => {
-                return Err(format!(
-                    "Read error for line {1}: {0}",
-                    err.kind(),
-                    self.line_num + 1
-                ))
-            }
+            Err(err) => Err(format!(
+                "Read error for line {1}: {0}",
+                err.kind(),
+                self.line_num + 1
+            )),
         }
     }
 
@@ -85,7 +82,7 @@ impl TOMLParser {
 
     pub fn next_parserline(&mut self) -> Result<ParserLine, String> {
         if !self.next_line()? {
-            return Err(String::from(EOF_ERROR));
+            Err(String::from(EOF_ERROR))
         } else {
             Ok(self.curr_parserline())
         }
@@ -110,7 +107,7 @@ impl TOMLParser {
             }
             return self.parse_basic_string(context);
         }
-        return self.parse_multi_string(context);
+        self.parse_multi_string(context)
     }
 
     pub fn parse_literal_string(
@@ -126,7 +123,7 @@ impl TOMLParser {
             }
             return self.parse_basic_litstr(context);
         }
-        return self.parse_multi_litstr(context);
+        self.parse_multi_litstr(context)
     }
 
     fn parse_basic_litstr(
@@ -447,7 +444,7 @@ impl TOMLParser {
             }
         }
         let count = seg.count();
-        return Ok((outchar, ParserLine::freeze(context, count), false));
+        Ok((outchar, ParserLine::freeze(context, count), false))
     }
 
     fn parse_basic_escape_sequence(mut context: ParserLine) -> Option<(char, ParserLine)> {
@@ -574,12 +571,7 @@ impl TOMLParser {
                                         prefix.to_string(),
                                         ParserLine::freeze(context, count),
                                     )?;
-                                    seg = {
-                                        match context.next_seg() {
-                                            None => TOMLSeg::default(),
-                                            Some(next) => next,
-                                        }
-                                    }
+                                    seg = context.next_seg().unwrap_or_default();
                                 }
 
                                 _ => {
@@ -594,12 +586,7 @@ impl TOMLParser {
                     "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                         let count = seg.count();
                         (output, context) = Self::dec_parse(ParserLine::freeze(context, count))?;
-                        seg = {
-                            match context.next_seg() {
-                                None => TOMLSeg::default(),
-                                Some(next) => next,
-                            }
-                        }
+                        seg = context.next_seg().unwrap_or_default();
                     }
                     _ => {
                         return Err(format!(
@@ -631,13 +618,6 @@ impl TOMLParser {
         let mut output: i64 = 0;
         if let Some(&"0") = seg.peek() {
             seg.next();
-            match seg.peek() {
-                Some(ch) => match *ch {
-                    " " | "\t" | "\n" => (),
-                    _ => {}
-                },
-                None => (),
-            }
         } else {
             // parse the number, checking for overflow
             loop {
@@ -895,11 +875,7 @@ impl TOMLParser {
 
         let is_keepable = |x: &&str| {
             let x = *x;
-            if x == " " || x == "\t" || x == "\n" || x == "_" {
-                false
-            } else {
-                true
-            }
+            !(x == " " || x == "\t" || x == "\n" || x == "_")
         };
 
         // Check for basic formatting issues
@@ -940,8 +916,8 @@ impl TOMLParser {
         match output {
             Some(val) => {
                 // the segment is technically exhausted, so pass zero to freeze.
-                let context = ParserLine::freeze(context, 0); 
-                                                                                
+                let context = ParserLine::freeze(context, 0);
+
                 Ok((TOMLType::Bool(val), context))
             }
             None => Err(format!(
@@ -951,18 +927,17 @@ impl TOMLParser {
         }
     }
 
-
     pub fn parse_date(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
         let mut seg = context.next_seg().unwrap();
         let test_str = seg.content().trim();
         match try_naive_dtparse(test_str) {
             Some(date) => Ok((date, ParserLine::freeze(context, 0))),
             None => Err(format!(
-                "Line {}: Could not parse a datetime",  context.line_num()
+                "Line {}: Could not parse a datetime",
+                context.line_num()
             )),
         }
     }
-
 }
 
 ///////////////////
@@ -994,9 +969,8 @@ fn try_naive_datetime(s: &str) -> Option<NaiveDateTime> {
     ];
 
     for format in NAIVEDATETIME_FORMATS {
-        match NaiveDateTime::parse_from_str(s, format) {
-            Ok(val) => return Some(val),
-            Err(_) => (),
+        if let Ok(val) = NaiveDateTime::parse_from_str(s, format) {
+            return Some(val);
         }
     }
     None
@@ -1006,7 +980,7 @@ fn try_naive_date(s: &str) -> Option<NaiveDate> {
     const NAIVEDATE_FORMAT: &str = "%Y-%m-%d";
 
     match NaiveDate::parse_from_str(s, NAIVEDATE_FORMAT) {
-        Ok(val) => return Some(val),
+        Ok(val) => Some(val),
         Err(_) => None,
     }
 }
@@ -1015,9 +989,8 @@ fn try_naive_time(s: &str) -> Option<NaiveTime> {
     const NAIVETIME_FORMATS: [&str; 2] = ["%H:%M:%S.%f", "%H:%M:%S"];
 
     for format in NAIVETIME_FORMATS {
-        match NaiveTime::parse_from_str(s, format) {
-            Ok(val) => return Some(val),
-            Err(_) => (),
+        if let Ok(val) = NaiveTime::parse_from_str(s, format) {
+            return Some(val);
         }
     }
     None
@@ -1095,11 +1068,8 @@ fn is_hexdigit(query: Option<&&str>) -> bool {
         Some(text) => {
             let char_opt = text.chars().next();
             match char_opt {
-                Some(c) => match c {
-                    '0'..='9' | 'A'..='F' | 'a'..='f' => true,
-                    _ => false,
-                },
-                None => false, // was the empty string
+                Some('0'..='9' | 'A'..='F' | 'a'..='f') => true,
+                _ => false, // was the empty string
             }
         }
         None => false,
@@ -1115,7 +1085,7 @@ fn is_numeric(s: &str) -> bool {
 
 fn is_octal(s: &str) -> bool {
     if s == "8" || s == "9" {
-        return false;
+        false
     } else {
         is_numeric(s)
     }

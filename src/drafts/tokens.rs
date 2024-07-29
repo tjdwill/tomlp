@@ -2,7 +2,7 @@
 // Imports
 //////////
 
-use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime, NaiveDateTime};
+use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 use std::collections::HashMap;
 
 /////////////////
