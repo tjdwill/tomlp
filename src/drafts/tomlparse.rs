@@ -1,5 +1,5 @@
 // stdlib imports
-#![allow(unused_mut)]
+#![allow(unused_mut, unused_imports, dead_code)]
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
@@ -133,9 +133,8 @@ impl TOMLParser {
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
-        // throw away delimiter
         let mut seg = context.next_seg().unwrap();
-        seg.next();
+        seg.next(); // throw away delimiter.
         let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
         loop {
             match seg.next() {
@@ -151,23 +150,20 @@ impl TOMLParser {
                         continue;
                     }
                 },
-                Some(ch) => {
-                    match ch {
-                        LITERAL_STR_TOKEN => break,
-                        _ => {
-                            // TODO: Add check for disallowed UTF8 characters.
-                            if !is_valid_litstr_grapheme(ch) {
-                                return Err(format!(
-                                    "Err: Line {}: Invalid Unicode Character U+{:X} in literal string.",
-                                    self.line_num,
-                                    ch.chars().next().unwrap() as u32,
-                                ));
-                            } else {
-                                grapheme_pool.push_str(ch);
-                            }
+                Some(ch) => match ch {
+                    LITERAL_STR_TOKEN => break,
+                    _ => {
+                        if !is_valid_litstr_grapheme(ch) {
+                            return Err(format!(
+                                "Err: Line {}: Invalid Unicode Character U+{:X} in literal string.",
+                                self.line_num,
+                                ch.chars().next().unwrap() as u32,
+                            ));
+                        } else {
+                            grapheme_pool.push_str(ch);
                         }
                     }
-                }
+                },
             }
         }
         let count = seg.count();
@@ -181,12 +177,12 @@ impl TOMLParser {
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
-        // throw away first three characters (the delimiter)
         let mut apostrophe_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
 
         let mut seg = context.next_seg().unwrap();
+        // throw away first three characters (the delimiter)
         for _ in 0..3 {
             seg.next();
         }
@@ -194,7 +190,7 @@ impl TOMLParser {
         if let Some(&"\n") = seg.peek() {
             seg.next();
         }
-        // in multi-string context
+        // enter multi-string context
         let mut graphemes_added = 0;
         while apostrophe_count < 3 {
             match seg.next() {
@@ -208,6 +204,7 @@ impl TOMLParser {
                 }
 
                 None => {
+                    // get a newline if necessary
                     if context.is_exhausted() {
                         context = self.next_parserline()?;
                     }
@@ -237,12 +234,13 @@ impl TOMLParser {
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
-        // throw away first three characters (the delimiter)
+
         let mut quote_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
 
         let mut seg = context.next_seg().unwrap();
+        // throw away first three characters (the delimiter)
         for _ in 0..3 {
             seg.next();
         }
@@ -296,9 +294,9 @@ impl TOMLParser {
                     seg = context.next_seg().unwrap();
                 }
             }
-        } // possibly found closing delimiter
+        } // Possibly found closing delimiter
 
-        // check for extra quotation mark (this is a really annoying thing to allow)
+        // Check for extra quotation mark (this is a really annoying thing to allow)
         // REFERENCE: https://toml.io/en/v1.0.0#string
         if let Some(&"\"") = seg.peek() {
             grapheme_pool.push_str(seg.next().unwrap());
@@ -334,7 +332,7 @@ impl TOMLParser {
                     }
                     Some(next) => {
                         seg = next;
-                        continue;
+                        continue
                     }
                 },
                 Some(ch) => {
@@ -369,7 +367,6 @@ impl TOMLParser {
                             }
                         }
                         _ => {
-                            // TODO: Add check for disallowed UTF8 characters.
                             if !is_valid_multstr_grapheme(ch) {
                                 return Err(format!(
                                     "Err: Line {}: Invalid Unicode Character U+{:X}",
@@ -391,13 +388,18 @@ impl TOMLParser {
         ))
     }
 
-    /// Produce a UTF8 escape literal from a given iterator
+    /// Produces a UTF8 escape literal from a given iterator.
     /// Assumes Unix OS so the newline can fit into a char.
-    /// PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
+    /// Returns tuple of (char, ParserLine, bool) where each
+    /// is (escaped_char, context, increment_delimiter)
+    /// `increment_delimiter` is a way to ensure an escaped `"` is
+    /// counted if if's the first character after a line escape.
+    /// Basically, it's needed for the parsing to perform properly.
     pub fn parse_multi_escape_sequence(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(char, ParserLine, bool), String> {
+        // PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
         // TODO: Check logic for this function
         // Assume we have identified a backslash
         let mut seg = {
@@ -419,12 +421,10 @@ impl TOMLParser {
             "\\" => outchar = '\\',
             "u" | "U" => match escape_utf8(&mut seg) {
                 Some(c) => outchar = c,
-                None => {
-                    return Err(format!(
+                None => return Err(format!(
                     "Err: Line {}: Invalid UTF8 escape sequence. Format: \\uXXXX or \\uXXXXXXXX",
                     context.line_num()
-                ))
-                }
+                )),
             },
             _ => {
                 if !c.chars().next().unwrap().is_whitespace() {
@@ -491,15 +491,10 @@ impl TOMLParser {
     fn get_nonwhitespace(&mut self, mut context: ParserLine) -> Result<(char, ParserLine), String> {
         // The last line may have ended if the whitespace character was a newline, so
         // the next line is obtained in that instance.
-        let mut seg = {
-            match context.next_seg() {
-                Some(next_seg) => next_seg,
-                None => {
-                    context = self.next_parserline()?;
-                    return self.get_nonwhitespace(context);
-                }
-            }
-        };
+        if context.is_exhausted() {
+            context = self.next_parserline()?;
+        }
+        let mut seg = context.next_seg().unwrap();
         // find the non-newline
         loop {
             match seg.next() {
@@ -507,9 +502,9 @@ impl TOMLParser {
                     let ch = ch.chars().next().unwrap();
                     if !ch.is_whitespace() {
                         let count = seg.count();
-                        return Ok((ch, ParserLine::freeze(context, count)));
+                        return Ok((ch, ParserLine::freeze(context, count)))
                     } else {
-                        continue;
+                        continue
                     }
                 }
                 None => {
@@ -517,12 +512,12 @@ impl TOMLParser {
                     match context.next_seg() {
                         Some(next_seg) => {
                             seg = next_seg;
-                            continue;
+                            continue
                         }
                         None => {
                             // try to get the next line
                             context = self.next_parserline()?;
-                            return self.get_nonwhitespace(context);
+                            return self.get_nonwhitespace(context)
                         }
                     }
                 }
@@ -535,9 +530,9 @@ impl TOMLParser {
     // modify the structure. Is that the correct thing to do?
     pub fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
         // Assume we know some character data exists.
-        context = skip_ws(context);
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
+        seg.skip_ws();
         let mut is_negative = false;
         let mut plus_found = false;
 
@@ -572,8 +567,8 @@ impl TOMLParser {
                                 "b" | "o" | "x" => {
                                     if is_negative || plus_found {
                                         return Err(format!(
-                                                "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
-                                            ));
+                                            "Line {}: Integer Parsing Error: Invalid Prefix. Write '0[box]'", line_num
+                                        ));
                                     }
 
                                     let count = seg.count();
@@ -721,6 +716,7 @@ impl TOMLParser {
     // digit &strs. The mode would then determine which array to use and which scale factor to use (16, 8, or 2). The
     // overall logic is the same for all three inner fynctions.
     fn nondec_parse(mode: String, mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+        // NOTE: Consider changing mode's type to char.
         let mut seg = context.peek().unwrap();
         // preliminary check to see if the next value is some numeric.
         if !is_hexdigit(seg.peek()) {
@@ -737,6 +733,7 @@ impl TOMLParser {
         }
     }
 
+    /// Parses the input hexadecimal into a decimal value.
     fn hex_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
@@ -759,14 +756,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ));
+                                ))
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ));
+                                ))
                             } else {
                                 found_underscore = true;
                             }
@@ -811,14 +808,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ));
+                                ))
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ));
+                                ))
                             } else {
                                 found_underscore = true;
                             }
@@ -863,14 +860,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ));
+                                ))
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ));
+                                ))
                             } else {
                                 found_underscore = true;
                             }
@@ -898,7 +895,7 @@ impl TOMLParser {
         // This isn't one-to-one with the TOML spec, but, honestly, I will accept it.
         // It beats the alternative of manually parsing IEE 754 binary64 floats.
 
-        let removable = |x: &&str| {
+        let is_keepable = |x: &&str| {
             let x = *x;
             if x == " " || x == "\t" || x == "\n" || x == "_" {
                 false
@@ -908,21 +905,25 @@ impl TOMLParser {
         };
 
         // Check for basic formatting issues
-        let mut format_check_iter = context.peek().unwrap().filter(removable);
+        let mut format_check_iter = context.peek().unwrap().filter(is_keepable);
         if let Some(".") = format_check_iter.next() {
             return Err(format!(
                 "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
                 context.line_num()
-            ));
+            ))
         } else if let Some(".") = format_check_iter.last() {
             return Err(format!(
                 "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
                 context.line_num()
-            ));
+            ))
         }
 
         let seg = context.next_seg().unwrap();
-        let result = seg.filter(removable).collect::<String>().parse::<f64>();
+        let result = seg
+            .content()
+            .trim()
+            .replace("_", "")
+            .parse::<f64>();
         match result {
             Ok(val) => Ok((TOMLType::Float(val), context)),
             Err(_) => Err(format!("Line {}: Float Parsing Error.", context.line_num())),
@@ -944,7 +945,7 @@ fn is_valid_str_grapheme(s: &str) -> bool {
 
     for c in CHARS {
         if s == c {
-            return false;
+            return false
         }
     }
     true
@@ -974,8 +975,10 @@ fn is_valid_comment_grapheme(s: &str) -> bool {
     is_valid_str_grapheme(s)
 }
 
+/// Produces a character from a sequence of four or eight hexadecimal digits
+/// Ex. when called on the sequence `0001f525`, the output is 🔥.
 fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
-    // try to find 4 or 8 hexadecimal digits
+    // try to find either 4 or 8 hexadecimal digits
     const SMALL_SEQ_LENGTH: i32 = 4;
     const LARGE_SEQ_LENGTH: i32 = 8;
 
@@ -985,11 +988,11 @@ fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
     while digits_parsed < LARGE_SEQ_LENGTH {
         if is_hexdigit(iter.peek()) {
             let digit = iter.next().unwrap();
-            hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap();
+            hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap(); // UNWRAP Justification: to reach this operation, the character must be a Hex digit.
         } else if digits_parsed == SMALL_SEQ_LENGTH {
-            break;
+            break
         } else {
-            return None;
+            return None
         }
         digits_parsed += 1;
     }
@@ -1023,33 +1026,10 @@ fn is_numeric(s: &str) -> bool {
 
 fn is_octal(s: &str) -> bool {
     if s == "8" || s == "9" {
-        return false;
+        return false
     } else {
         is_numeric(s)
     }
-}
-/// skip the whitespace at the current segment
-fn skip_ws(mut context: ParserLine) -> ParserLine {
-    let mut seg = {
-        match context.next_seg() {
-            None => return context,
-            Some(next) => next,
-        }
-    };
-
-    loop {
-        match seg.peek() {
-            Some(&ch) => match ch {
-                " " | "\t" => {
-                    seg.next();
-                }
-                _ => break,
-            },
-            None => break,
-        }
-    }
-    let count = seg.count();
-    ParserLine::freeze(context, count)
 }
 
 fn parse_comment(mut context: ParserLine) -> Result<(), String> {
@@ -1062,7 +1042,7 @@ fn parse_comment(mut context: ParserLine) -> Result<(), String> {
                     return Err(format!(
                         "Invalid Comment Character: {} on Line {}",
                         ch, line_num
-                    ));
+                    ))
                 }
             }
             None => {
@@ -1072,7 +1052,7 @@ fn parse_comment(mut context: ParserLine) -> Result<(), String> {
                         None => return Ok(()),
                     }
                 };
-                return parse_comment(context);
+                iter = next_iter;
             }
         }
     }

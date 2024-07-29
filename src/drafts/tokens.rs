@@ -4,7 +4,6 @@
 
 use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveTime};
 use std::collections::HashMap;
-use std::hash::Hash;
 
 /////////////////
 // Implementation

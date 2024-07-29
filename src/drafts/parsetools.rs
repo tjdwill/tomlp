@@ -84,7 +84,7 @@ impl ParserLine {
             if seg_nums.is_empty() {
                 0
             } else {
-                seg_nums.len() - 1 
+                seg_nums.len() - 1
             }
         };
         Self {
@@ -145,7 +145,6 @@ impl ParserLine {
             } else {
                 // produce full segment
                 let (byte_lb, byte_ub) = (bytes[curr_num], bytes[curr_num + 1]);
-                let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
                 let slice = &(self.data.as_str()[byte_lb..byte_ub]);
                 output = Some(TOMLSeg::new(slice));
             }
@@ -191,7 +190,6 @@ impl ParserLine {
             } else {
                 // produce full segment
                 let (byte_lb, byte_ub) = (bytes[curr_num], bytes[curr_num + 1]);
-                let (lb, ub) = (cursors[curr_num], cursors[curr_num + 1]);
                 let slice = &(self.data.as_str()[byte_lb..byte_ub]);
                 output = Some(TOMLSeg::new(slice));
                 self.curr_seg_num += 1;
@@ -281,6 +279,7 @@ impl ParserLine {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use super::ParserLine;
     /////////////

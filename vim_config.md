@@ -30,6 +30,15 @@ Plug 'neoclide/coc.nvim', {'branch': 'release'},
 3. Install `coc-rust-analyzer` via `:CocInstall coc-rust-analyzer`
 4. Source the [example configuration](https://github.com/neoclide/coc.nvim#example-vim-configuration) in your vimrc or paste it directly. 
     - Important for Tab completion and other features.
+5. Add the following to `:CocConfig` to control what is checked by cargo clean.
+
+```json
+    "workspace.ignoredFolders": [
+      "$HOME",
+      "$HOME/.cargo/**",
+      "$HOME/.rustup/**"
+    ],
+```
 
 **For Posterity**: the feature where type hints are displayed as virtual text is called *inlay hinting*. Knowing this saves search time.
 

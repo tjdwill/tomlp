@@ -1,0 +1,9 @@
+#!/usr/bin/sh
+
+cd $tomlp/src/bin
+cargo run --bin test_parse
+cargo run --bin test_floatparse
+cargo run --bin test_intparse
+cargo run --bin test_escapes
+cargo run --bin test_strings
+
