@@ -234,7 +234,6 @@ impl TOMLParser {
         &mut self,
         mut context: ParserLine,
     ) -> Result<(TOMLType, ParserLine), String> {
-
         let mut quote_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
@@ -332,53 +331,50 @@ impl TOMLParser {
                     }
                     Some(next) => {
                         seg = next;
-                        continue
+                        continue;
                     }
                 },
-                Some(ch) => {
-                    match ch {
-                        "\"" => break,
-                        "\\" => {
-                            let count = seg.count();
-                            match Self::parse_basic_escape_sequence(ParserLine::freeze(
-                                context, count,
-                            )) {
-                                None => {
-                                    return Err(format!(
-                                        "Err: Line {}: Invalid String Escape Sequence",
-                                        self.line_num
-                                    ))
-                                }
-                                Some((ch, pline)) => {
-                                    context = pline;
-                                    seg = {
-                                        match context.next_seg() {
-                                            None => {
-                                                return Err(format!(
-                                                    "Err: Line {}: Non-terminating basic string.",
-                                                    self.line_num
-                                                ))
-                                            }
-                                            Some(next) => next,
-                                        }
-                                    };
-                                    grapheme_pool.push(ch);
-                                }
-                            }
-                        }
-                        _ => {
-                            if !is_valid_multstr_grapheme(ch) {
+                Some(ch) => match ch {
+                    "\"" => break,
+                    "\\" => {
+                        let count = seg.count();
+                        match Self::parse_basic_escape_sequence(ParserLine::freeze(context, count))
+                        {
+                            None => {
                                 return Err(format!(
-                                    "Err: Line {}: Invalid Unicode Character U+{:X}",
-                                    self.line_num,
-                                    ch.chars().next().unwrap() as u32,
-                                ));
-                            } else {
-                                grapheme_pool.push_str(ch);
+                                    "Err: Line {}: Invalid String Escape Sequence",
+                                    self.line_num
+                                ))
+                            }
+                            Some((ch, pline)) => {
+                                context = pline;
+                                seg = {
+                                    match context.next_seg() {
+                                        None => {
+                                            return Err(format!(
+                                                "Err: Line {}: Non-terminating basic string.",
+                                                self.line_num
+                                            ))
+                                        }
+                                        Some(next) => next,
+                                    }
+                                };
+                                grapheme_pool.push(ch);
                             }
                         }
                     }
-                }
+                    _ => {
+                        if !is_valid_multstr_grapheme(ch) {
+                            return Err(format!(
+                                "Err: Line {}: Invalid Unicode Character U+{:X}",
+                                self.line_num,
+                                ch.chars().next().unwrap() as u32,
+                            ));
+                        } else {
+                            grapheme_pool.push_str(ch);
+                        }
+                    }
+                },
             }
         }
         let count = seg.count();
@@ -421,10 +417,12 @@ impl TOMLParser {
             "\\" => outchar = '\\',
             "u" | "U" => match escape_utf8(&mut seg) {
                 Some(c) => outchar = c,
-                None => return Err(format!(
+                None => {
+                    return Err(format!(
                     "Err: Line {}: Invalid UTF8 escape sequence. Format: \\uXXXX or \\uXXXXXXXX",
                     context.line_num()
-                )),
+                ))
+                }
             },
             _ => {
                 if !c.chars().next().unwrap().is_whitespace() {
@@ -502,9 +500,9 @@ impl TOMLParser {
                     let ch = ch.chars().next().unwrap();
                     if !ch.is_whitespace() {
                         let count = seg.count();
-                        return Ok((ch, ParserLine::freeze(context, count)))
+                        return Ok((ch, ParserLine::freeze(context, count)));
                     } else {
-                        continue
+                        continue;
                     }
                 }
                 None => {
@@ -512,12 +510,12 @@ impl TOMLParser {
                     match context.next_seg() {
                         Some(next_seg) => {
                             seg = next_seg;
-                            continue
+                            continue;
                         }
                         None => {
                             // try to get the next line
                             context = self.next_parserline()?;
-                            return self.get_nonwhitespace(context)
+                            return self.get_nonwhitespace(context);
                         }
                     }
                 }
@@ -756,14 +754,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ))
+                                ));
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ))
+                                ));
                             } else {
                                 found_underscore = true;
                             }
@@ -808,14 +806,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ))
+                                ));
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ))
+                                ));
                             } else {
                                 found_underscore = true;
                             }
@@ -860,14 +858,14 @@ impl TOMLParser {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Integer Overflow",
                                     line_num
-                                ))
+                                ));
                             }
                         }
                         "_" => {
                             if found_underscore {
                                 return Err(format!(
                                     "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                ))
+                                ));
                             } else {
                                 found_underscore = true;
                             }
@@ -910,23 +908,45 @@ impl TOMLParser {
             return Err(format!(
                 "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
                 context.line_num()
-            ))
+            ));
         } else if let Some(".") = format_check_iter.last() {
             return Err(format!(
                 "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
                 context.line_num()
-            ))
+            ));
         }
 
         let seg = context.next_seg().unwrap();
-        let result = seg
-            .content()
-            .trim()
-            .replace("_", "")
-            .parse::<f64>();
+        let result = seg.content().trim().replace("_", "").parse::<f64>();
         match result {
             Ok(val) => Ok((TOMLType::Float(val), context)),
             Err(_) => Err(format!("Line {}: Float Parsing Error.", context.line_num())),
+        }
+    }
+
+    pub fn parse_bool(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+        let output: Option<bool>;
+        let mut seg = context.next_seg().unwrap();
+
+        let str_check = seg.content().trim();
+        if str_check == "true" {
+            output = Some(true);
+        } else if str_check == "false" {
+            output = Some(false);
+        } else {
+            output = None;
+        }
+
+        match output {
+            Some(val) => {
+                let count = seg.count();
+                let context = ParserLine::freeze(context, count);
+                Ok((TOMLType::Bool(val), context))
+            }
+            None => Err(format!(
+                "Line {}: Boolean Parsing Error.",
+                context.line_num()
+            )),
         }
     }
 }
@@ -945,7 +965,7 @@ fn is_valid_str_grapheme(s: &str) -> bool {
 
     for c in CHARS {
         if s == c {
-            return false
+            return false;
         }
     }
     true
@@ -990,9 +1010,9 @@ fn escape_utf8(iter: &mut TOMLSeg<'_>) -> Option<char> {
             let digit = iter.next().unwrap();
             hex_val = 16 * hex_val + u32::from_str_radix(digit, 16).unwrap(); // UNWRAP Justification: to reach this operation, the character must be a Hex digit.
         } else if digits_parsed == SMALL_SEQ_LENGTH {
-            break
+            break;
         } else {
-            return None
+            return None;
         }
         digits_parsed += 1;
     }
@@ -1026,7 +1046,7 @@ fn is_numeric(s: &str) -> bool {
 
 fn is_octal(s: &str) -> bool {
     if s == "8" || s == "9" {
-        return false
+        return false;
     } else {
         is_numeric(s)
     }
@@ -1042,7 +1062,7 @@ fn parse_comment(mut context: ParserLine) -> Result<(), String> {
                     return Err(format!(
                         "Invalid Comment Character: {} on Line {}",
                         ch, line_num
-                    ))
+                    ));
                 }
             }
             None => {
