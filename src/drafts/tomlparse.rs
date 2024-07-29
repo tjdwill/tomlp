@@ -939,8 +939,9 @@ impl TOMLParser {
 
         match output {
             Some(val) => {
-                let count = seg.count();
-                let context = ParserLine::freeze(context, count);
+                // the segment is technically exhausted, so pass zero to freeze.
+                let context = ParserLine::freeze(context, 0); 
+                                                                                
                 Ok((TOMLType::Bool(val), context))
             }
             None => Err(format!(
