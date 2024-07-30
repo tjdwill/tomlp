@@ -17,6 +17,21 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 29 July 2024
+
+I was thinking about the design for the representation of the parsed TOML information.
+Initially, due to the key-value-based format, I intended to use a HashMap. This would work because I can store all of the TOMLType values into the structure, but I think traversal would be a little...involved. 
+
+When thinking, I realized that I wanted something that would make a given path easily traversable. The use of the term "path" eventually resulted in realizing that I can model the entire structure as a virtual file system. A *directory* is the current "level" of the structure and points to other pairs (*files*). 
+
+A given item has two components: its *name* (key) and its *contents* (value).
+The one thing that may be difficult is determining how to implement the recursion.
+Maybe have one element contain a `Box<Tree>` if I call the type `Tree`?
+
+## 28 July 2024
+
+Added date and boolean parsing. Modified tests; did some refactoring.
+
 ## 27 July 2024
 
 Just for fun, I tried to modify `ParserLine::find_segments` to label the segments semantically. However, I discovered that this is a very difficult task. Because a given delimiter character such as `[` have different functions within different contexts, it's hard to determine what the label should be. This is especially true given that the current line's context cannot be determined when considering multi-line values.
