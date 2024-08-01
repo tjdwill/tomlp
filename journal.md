@@ -19,7 +19,7 @@ Here is a living list of questions I have about the design:
 
 ## 1 August 2024
 
-I think I may have figured out TOML tablesi, PTMH. The TOML spec states that tables may only be defined once. I think the word "defined" is a bit misleading because, to me, it implies that once a tbale is instantiated, it is immutable. As this is not the case—we need to be able to add additional items to a given table, otherwise, there's not much use in the configuration language,— perhaps a better term is "declared". Even this, however, is an imperfect replacement because supertables can be fully defined after its subtable if the supertable was created as a result of defining the subtable.
+I think I may have figured out TOML tables, PTMH. The TOML spec states that tables may only be defined once. I think the word "defined" is a bit misleading because, to me, it implies that once a tbale is instantiated, it is immutable. As this is not the case—we need to be able to add additional items to a given table, otherwise, there's not much use in the configuration language,— perhaps a better term is "declared". Even this, however, is an imperfect replacement because supertables can be fully defined after its subtable if the supertable was created as a result of defining the subtable.
 
 ### Dotted Keys vs. Table Headers
 In any case, the verbiage of the spec was a bit confusing because I had a different impression (an implicit assumption?) regarding tables themselves. I assumed that tables were tables regardless of the syntax used to declare them (with array of tables and inline tables being exceptions). However, it is now clear to me that tables declared via header syntax are a different type than those declared via dotted key syntax *under* a table heading. Meaning,
@@ -39,11 +39,11 @@ are different types even though the resulting table is the same. If I were to in
 
 ```toml
 # file1
-{"fruits": Table({"apple": DKTable({"color": "red"})})}
+# {"fruits": Table({"apple": DKTable({"color": "red"})})}
 
 # ---
 #file2
-{"fruits": DKTable({"apple": DKTable({"color": "red"})})}
+# {"fruits": DKTable({"apple": DKTable({"color": "red"})})}
 ```
 
 The hashmap is the same strucuturally, but the types are different. Representing these two cases as separate types makes the table header rules much easier to process.
