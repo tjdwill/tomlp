@@ -35,6 +35,42 @@ pub enum TOMLType {
     TimeStamp(DateTime<FixedOffset>),
     // Collections
     Array(Vec<Self>),
-    Table(HashMap<String, Self>),
-    InlineTable(HashMap<String, Self>),
+    Table(TOMLTable),
+    InlineTable(TOMLTable),  // Needed because InlineTables are to be self-contained
+                             // and non-modifiable after definition
 }
+impl TOMLType {
+    pub fn str(&self) -> Option<&str> {
+        match self {
+            Self::BasicStr(s) | Self::MultiStr(s) | Self::LitStr(s) | Self::MultiLitStr(s) => {
+                Some(s.as_str())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn i64(&self) -> Option<i64> {
+        if let Self::Int(n) = *self {
+            Some(n)
+        } else {
+            None
+        }
+    }
+
+    pub fn f64(&self) -> Option<f64> {
+        if let Self::Float(n) = *self {
+            Some(n)
+        } else {
+            None
+        }
+    }
+
+    pub fn array(&self) -> Option<&Vec<Self>> {
+        if let Self::Array(arr) = self {
+            Some(arr)
+        } else {
+            None
+        }
+    }
+}
+

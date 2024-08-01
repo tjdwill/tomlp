@@ -17,6 +17,98 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 1 August 2024
+
+I think I may have figured out TOML tablesi, PTMH. The TOML spec states that tables may only be defined once. I think the word "defined" is a bit misleading because, to me, it implies that once a tbale is instantiated, it is immutable. As this is not the case—we need to be able to add additional items to a given table, otherwise, there's not much use in the configuration language,— perhaps a better term is "declared". Even this, however, is an imperfect replacement because supertables can be fully defined after its subtable if the supertable was created as a result of defining the subtable.
+
+### Dotted Keys vs. Table Headers
+In any case, the verbiage of the spec was a bit confusing because I had a different impression (an implicit assumption?) regarding tables themselves. I assumed that tables were tables regardless of the syntax used to declare them (with array of tables and inline tables being exceptions). However, it is now clear to me that tables declared via header syntax are a different type than those declared via dotted key syntax *under* a table heading. Meaning,
+
+```toml
+# file 1
+[fruits.apple]
+color = "red"
+
+# ---
+# file 2
+[fruits]
+apple.color = "red"
+```
+
+are different types even though the resulting table is the same. If I were to introduce a new `TOMLType` variant for dotted-key-instatiated tables called `DKTable`, then the resulting structures would be the following:
+
+```toml
+# file1
+{"fruits": Table({"apple": DKTable({"color": "red"})})}
+
+# ---
+#file2
+{"fruits": DKTable({"apple": DKTable({"color": "red"})})}
+```
+
+The hashmap is the same strucuturally, but the types are different. Representing these two cases as separate types makes the table header rules much easier to process.
+Using the same example, the rule that a table defined by a header cannot be re-defined via dotted key is easily understood:
+
+```toml
+[fruits]
+apple.color = "red"
+
+[fruits.apple]  # INVALID
+```
+
+Since `apple` is initially defined as a `DKTable`, we can't then create a normal `Table`. In fact, the rule would be written as:
+
+**Table Header Dotted Label Rule**
+> A dotted table header whose last segment points to a dotted key table is invalid. Dotted headers that *extend* dotted key tables are allowed.
+
+So, continuing the last example, `[fruits.apple]` is invalid because `apple` is defined as a `DKTable`. However, a dotted header that extends `apple` is fine:
+
+```toml
+[fruits]
+apple.color = "red"
+
+# [fruits.apple]        # BAD
+[fruits.apple.texture]  # VALID: `texture` doesn't exist as a key in `apple`, so it can define a subtable of type `Table`.
+# ... some stuff
+```
+
+
+### Valid Table Header
+
+Whether a table header is valid depends on what each segment points to. The simple case is obvious: if the table exists already, the new label is invalid.
+
+0. For the dotted case, if you are defining a subtable in terms of uninitialized supertables, the header is valid and all supertables are initialized as empty.
+0. If the segments of a dotted string are already initialized **and** each parent segment points to a `Table`, the header is invalid only if it has been used already.
+0. If **any** segment of a header points to a `DKTable`, the header is only valid if it *extends* the last `DKTable` in the chain.
+0. If the first header segment points to an array of tables (AoT), there must be subsequent segments.
+    ```toml
+    [[fruits]]          # declares an AoT under "fruits"
+
+    [fruits]            # INVALID: fruits cannot be a `Table` and an `AoT`
+
+    [fruits.banana]     # Valid: declares a `Table` named "banana" under the last table in the "fruits" array.
+                        # If the label already exists in said table, of course, this header invalid.
+    ```
+
+### Handling Keys
+
+I think I want a way to be able to handle and compare dotted keys via a path-like structure. I wanted something like Rust's `Path`, but there doesn't seem to be a general method of representing a path through a graph structure. Also, I couldn't push the key segments to a `Path` because there's a possibility that a user includes a `/` as part of a key segment, which would split one segment into two.
+
+An idea I was inspired with was creating my own simple structure that can do what I want. As a delimiter, I can use a character that is invalid in TOML such as the null character U+00. This way, I *know* the keys are properly segmented in the custom `Path` type.
+
+**Desire Features**
+- Specify the delimiter
+- Get the segments of the Path
+- Iterable
+- Comparable (PathA == PathB?)
+
+I think this type may be useful in storing keys that have already been defined as dotted headers.
+
+## 31 July 2024
+
+Still working to understand how to process tables. It's taking time to fully get a comprehensive perspective on the task at hand. TOML has many stipulations surrounding how tables are to be handled. My goal is to process tables via recursion, but, to do so, I need to take table headers, array of tables, inline tables, and dotted keys all into consideration. For example, the dotted key introduces so much additional logic overhead for me. Specifically, the interaction between dotted key and table headers is confusing.
+
+
 ## 29 July 2024
 
 I was thinking about the design for the representation of the parsed TOML information.
