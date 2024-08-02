@@ -35,11 +35,14 @@ pub enum TOMLType {
     TimeStamp(DateTime<FixedOffset>),
     // Collections
     Array(Vec<Self>),
-    Table(TOMLTable),
-    InlineTable(TOMLTable),  // Needed because InlineTables are to be self-contained
-                             // and non-modifiable after definition
+    HTable(TOMLTable),          // Tables defined via table header syntax
+    DKTable(TOMLTable),         // Tables defined via dotted keys `ex. apple.color = "red"` 
+    InlineTable(TOMLTable),     // Needed because InlineTables are to be self-contained
+                                // and non-modifiable after definition
+    AoT(Vec<TOMLTable>),        // Array of Tables 
 }
 impl TOMLType {
+    /// Gets a reference to the underlying string
     pub fn str(&self) -> Option<&str> {
         match self {
             Self::BasicStr(s) | Self::MultiStr(s) | Self::LitStr(s) | Self::MultiLitStr(s) => {
