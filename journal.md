@@ -17,6 +17,13 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 15 August 2024
+
+I've been working, but I haven't been journaling. I've come up with a way to represent a key path through the table. Essentially, I replace a given `.` in a dotted key path with a null character `\0`. This is fine because `\0` is an invalid character in TOML, so no information is altered through its use as a delimiter for my own purpose.
+
+
+Additionally, I've written (but haven't tested) the function to parse keys. I will need to test this function, but that's a job for tomorrow or later.
+
 ## 1 August 2024
 
 I think I may have figured out TOML tables, PTMH. The TOML spec states that tables may only be defined once. I think the word "defined" is a bit misleading because, to me, it implies that once a tbale is instantiated, it is immutable. As this is not the case—we need to be able to add additional items to a given table, otherwise, there's not much use in the configuration language,— perhaps a better term is "declared". Even this, however, is an imperfect replacement because supertables can be fully defined after its subtable if the supertable was created as a result of defining the subtable.

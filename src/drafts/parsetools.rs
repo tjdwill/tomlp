@@ -278,34 +278,87 @@ impl ParserLine {
     }
 }
 
+/// A struct for creating paths throught some graph-like structure
+/// based on a provided delimiter.
+#[derive(Clone, Debug)]
+pub struct TPath<'a> {
+    delimiter: &'a str,
+    content: String,
+}
+/*  ==TPath Implementation==
+ *  Traits:
+ *      - PartialEq, Eq
+ *      - IntoIterator
+*/
+impl<'a> TPath<'a> {
+    pub fn new(segments: Vec<String>, delimiter: &'a str) -> Option<Self> {
+        if segments.is_empty() {
+            None
+        } else {
+            let num_delimiters = segments.len() - 1;
+            let mut content = String::new();
+            for s in segments.iter().take(num_delimiters) {
+                content.push_str(s.as_str());
+                content.push_str(delimiter);
+            }
+            content.push_str(segments[num_delimiters].as_str());
+            Some(Self { delimiter, content })
+        }
+    }
+
+    /// Outputs the first segment of the path
+    pub fn first(&self) -> &str {
+        // if this method can be called, then at least one item exists
+        self.into_iter().next().unwrap()
+    }
+
+    /// Outputs the last component of the path
+    pub fn last(&self) -> &str {
+        // if this method can be called, then at least one item exists
+        self.into_iter().last().unwrap()
+    }
+}
+impl<'a> PartialEq for TPath<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.content == other.content
+    }
+}
+impl<'delim> Eq for TPath<'delim> {}
+impl<'delim, 'a> IntoIterator for &'a TPath<'delim> {
+    type Item = &'a str;
+    type IntoIter = std::str::Split<'a, &'delim str>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.content.split(self.delimiter)
+    }
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
 mod tests {
-    use super::ParserLine;
+    use super::{ParserLine, TPath};
+
     /////////////
     // Functions
     /////////////
 
-    pub fn main() {
-        let s = "==#[]{}".to_string();
+    #[test]
+    fn tpath_instantiation() {
+        let x = vec!["", "home", "tj", "documents"];
+        let x: Vec<String> = x.iter().map(|x| x.to_string()).collect();
 
-        print_segs(s.as_str());
-        print_segs("some_key = value # this is a comment\n");
-        print_segs("[\"This is a normal table key\"]\n");
-        print_segs("{InlineTableKey: [An array, of, items]}\n");
-        print_segs("a̐=é#ö̲\r\n");
+        assert!(TPath::new(x, "\0").is_some());
+        assert_eq!(TPath::new(vec![], "/"), None);
     }
 
-    fn print_segs(s: &str) {
-        let mut segs = ParserLine::new(s.to_string(), 0);
-        println!("\nSegments: {:?}", segs);
-        while let Some(mut seg) = segs.next_seg() {
-            println!("Segment: {:?}", seg);
-            println!("Preview Char: {:?}", seg.peek());
-            let vector = seg.collect::<Vec<_>>();
-            println!("SegItem: {:?}", vector);
-        }
-        println!("\n");
+    #[test]
+    fn tpath_eq() {
+        let x = vec!["", "home", "tj", "documents"];
+        let x: Vec<String> = x.iter().map(|x| x.to_string()).collect();
+        let path = TPath::new(x.clone(), "\0");
+
+        assert_eq!(path, path);
+        assert_eq!(path, TPath::new(x.clone(), "\0"));
+        assert_ne!(path, TPath::new(x.clone(), "/"));
     }
 
     #[test]

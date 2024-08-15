@@ -4,11 +4,13 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
+use crate::drafts::constants::{KEY_VAL_SEP, TABLE_CLOSE_TOKEN};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
+
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
-use super::parsetools::{ParserLine, TOMLSeg};
+use super::parsetools::{ParserLine, TOMLSeg, TPath};
 pub use super::tokens::{TOMLTable, TOMLType};
 
 static EOF_ERROR: &str = "End of File during parsing operation.";
@@ -931,6 +933,128 @@ impl TOMLParser {
             )),
         }
     }
+
+    // == Key processing ==
+    /// Given an identified key location, parse the key sequence. Should handle
+    /// base keys, quoted keys, and dotted keys. Only concerned with producing the
+    /// key sequence itself; querying the table structure and validating unique keys are done
+    pub fn parse_key(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TPath<'static>, ParserLine), String> {
+        // Assume we begin at some whitespace.
+        // Also assume the key itself is a dotted key since it is the most general form.
+
+        let mut key_segs: Vec<String> = Vec::new();
+        let mut temp_buf = String::new(); // for parsing bare keys
+        let mut seg = context.next_seg().unwrap();
+        seg.skip_ws();
+
+        /*  Try to parse a dotted key. The termination condition is when:
+         *      - A `]` is found
+         *      - An `=` is found
+         */
+        let mut found_quoted_str = false;
+        loop {
+            match seg.peek() {
+                None => {
+                    // This means an equal sign should be the following character
+                    seg = {
+                        match context.next_seg() {
+                            None => {
+                                return Err(format!("Line {}: {}", context.line_num(), EOF_ERROR))
+                            }
+                            Some(new) => new,
+                        }
+                    }
+                }
+                Some(c) => {
+                    match *c {
+                        TABLE_CLOSE_TOKEN | KEY_VAL_SEP => {
+                            if !temp_buf.is_empty() {
+                                key_segs.push(temp_buf.clone());
+                                temp_buf.clear();
+                            }
+                            break;
+                        }
+
+                        "." => {
+                            seg.next();
+                            if temp_buf.is_empty() && !found_quoted_str {
+                                return Err(format!(
+                                    "Line {}: Bare keys cannot be empty.",
+                                    context.line_num()
+                                ));
+                            } else if found_quoted_str {
+                                found_quoted_str = false;
+                            } else {
+                                // push the bare key to storage
+                                key_segs.push(temp_buf.clone());
+                                temp_buf.clear();
+                            }
+                        }
+
+                        " " | "\t" => seg.skip_ws(),
+
+                        STR_TOKEN => {
+                            let count = seg.count();
+                            let (result, pline) =
+                                self.parse_basic_string(ParserLine::freeze(context, count))?;
+                            key_segs.push(result.str().unwrap().to_string());
+                            found_quoted_str = true;
+
+                            context = pline;
+                            seg = {
+                                match context.next_seg() {
+                                    None => return Err(format!("Line {}: Invalid format. Keys must be followed by either an equal sign or a closing square bracket.", context.line_num())),
+                                    Some(new) => new
+                                }
+                            }
+                        }
+
+                        LITERAL_STR_TOKEN => {
+                            let count = seg.count();
+                            let (result, pline) =
+                                self.parse_literal_string(ParserLine::freeze(context, count))?;
+                            key_segs.push(result.str().unwrap().to_string());
+                            found_quoted_str = true;
+
+                            context = pline;
+                            seg = {
+                                match context.next_seg() {
+                                    None => return Err(format!("Line {}: Invalid format. Keys must be followed by either an equal sign or a closing square bracket.", context.line_num())),
+                                    Some(new) => new
+                                }
+                            }
+                        }
+
+                        _ => {
+                            if !is_barekey_char(c) {
+                                let c = c.to_string();
+                                return Err(format!(
+                                    "Line {}: Invalid bare key character: {}.",
+                                    context.line_num(),
+                                    c
+                                ));
+                            } else {
+                                temp_buf.push_str(c);
+                                seg.next();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Done parsing keys
+        if key_segs.is_empty() {
+            return Err(format!("Line {}: No key found.", context.line_num()));
+        }
+
+        let tpath = TPath::new(key_segs, "\0").unwrap();
+        let count = seg.count();
+        Ok((tpath, ParserLine::freeze(context, count)))
+    }
 }
 
 ///////////////////
@@ -1028,6 +1152,16 @@ fn is_valid_multi_litstr_grapheme(s: &str) -> bool {
 }
 fn is_valid_comment_grapheme(s: &str) -> bool {
     is_valid_str_grapheme(s)
+}
+/// Determines if the provided string is a valid bare key character.
+fn is_barekey_char(s: &str) -> bool {
+    match s.chars().next() {
+        None => false,
+        Some(c) => match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-' => true,
+            _ => false,
+        },
+    }
 }
 
 /// Produces a character from a sequence of four or eight hexadecimal digits

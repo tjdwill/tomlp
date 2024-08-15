@@ -35,11 +35,11 @@ pub enum TOMLType {
     TimeStamp(DateTime<FixedOffset>),
     // Collections
     Array(Vec<Self>),
-    HTable(TOMLTable),          // Tables defined via table header syntax
-    DKTable(TOMLTable),         // Tables defined via dotted keys `ex. apple.color = "red"` 
-    InlineTable(TOMLTable),     // Needed because InlineTables are to be self-contained
-                                // and non-modifiable after definition
-    AoT(Vec<TOMLTable>),        // Array of Tables 
+    HTable(TOMLTable),      // Tables defined via table header syntax
+    DKTable(TOMLTable),     // Tables defined via dotted keys `ex. apple.color = "red"`
+    InlineTable(TOMLTable), // Needed because InlineTables are to be self-contained
+    // and non-modifiable after definition
+    AoT(Vec<TOMLTable>), // Array of Tables
 }
 impl TOMLType {
     /// Gets a reference to the underlying string
@@ -76,4 +76,3 @@ impl TOMLType {
         }
     }
 }
-
