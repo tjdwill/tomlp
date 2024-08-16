@@ -289,6 +289,7 @@ pub struct TPath<'a> {
  *  Traits:
  *      - PartialEq, Eq
  *      - IntoIterator
+ *      - Display
 */
 impl<'a> TPath<'a> {
     pub fn new(segments: Vec<String>, delimiter: &'a str) -> Option<Self> {
