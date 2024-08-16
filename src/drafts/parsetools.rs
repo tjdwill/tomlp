@@ -278,7 +278,7 @@ impl ParserLine {
     }
 }
 
-/// A struct for creating paths throught some graph-like structure
+/// A struct for creating paths through some graph-like structure
 /// based on a provided delimiter.
 #[derive(Clone, Debug)]
 pub struct TPath<'a> {
@@ -329,6 +329,11 @@ impl<'delim, 'a> IntoIterator for &'a TPath<'delim> {
     type IntoIter = std::str::Split<'a, &'delim str>;
     fn into_iter(self) -> Self::IntoIter {
         self.content.split(self.delimiter)
+    }
+}
+impl<'delim> std::fmt::Display for TPath<'delim> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.content)
     }
 }
 

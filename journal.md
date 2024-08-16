@@ -17,6 +17,10 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 16 August 2024
+
+I added the test for key parsing, and it worked on the first try! This marks the first Rust code snippet that I was able to implement without logic mistakes. A momentous occasion.
+
 ## 15 August 2024
 
 I've been working, but I haven't been journaling. I've come up with a way to represent a key path through the table. Essentially, I replace a given `.` in a dotted key path with a null character `\0`. This is fine because `\0` is an invalid character in TOML, so no information is altered through its use as a delimiter for my own purpose.
