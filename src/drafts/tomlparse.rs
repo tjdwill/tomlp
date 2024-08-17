@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
-use crate::drafts::constants::{KEY_VAL_SEP, TABLE_CLOSE_TOKEN};
+use crate::drafts::constants::{KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -17,9 +17,11 @@ static EOF_ERROR: &str = "End of File during parsing operation.";
 
 #[derive(Debug)]
 pub struct TOMLParser {
-    buffer: String,
-    reader: BufReader<File>,
+    buffer: String,          // Contains a given line.
+    reader: BufReader<File>, // TOML File reader construct
     line_num: usize,
+    table_heads: Vec<TPath<'static>>, // Contains all top-level keys of form `[key]`
+    main_table: TOMLTable,            // The overall TOMLTable
 }
 impl TOMLParser {
     // DEV Note: I think most functions will have to be made public for testing purposes.
@@ -34,6 +36,8 @@ impl TOMLParser {
             buffer: String::with_capacity(100 * 4),
             reader: BufReader::new(fd),
             line_num: 0,
+            table_heads: Vec::new(),
+            main_table: TOMLTable::new(),
         })
     }
 
@@ -1054,6 +1058,93 @@ impl TOMLParser {
         let tpath = TPath::new(key_segs, "\0").unwrap();
         let count = seg.count();
         Ok((tpath, ParserLine::freeze(context, count)))
+    }
+
+    pub fn parse_table_header(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(&mut TOMLTable, ParserLine), String> {
+        let mut seg = context.next_seg().unwrap();
+        // check to see if there is an array of tables first
+        // skip the first '['
+        seg.next();
+        if let Some(&TABLE_OPEN_TOKEN) = seg.peek() {
+            // Array of tables handling here
+        } else {
+            // the rest of the function
+            let (path, pline) = self.parse_key(context)?;
+            context = pline;
+            seg = context.next_seg().unwrap(); // we know the parse key function exits on either
+                                               // '[' or '='
+            if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
+                return Err(format!(
+                    "Line {}: Invalid Table Header; Must close with `{}`",
+                    context.line_num(),
+                    TABLE_CLOSE_TOKEN
+                ));
+            }
+            // == Path Handling ==
+            // check if path is included in the current listing of paths.
+            if !self.is_unique_table_header(&path) {
+                return Err(format!(
+                    "Line {}: Table header `{:?}` is already defined.",
+                    context.line_num(),
+                    &path
+                ));
+            }
+            /* Here, we know the path has not been used.
+             * Now, we must determine if the provided path is
+             * valid in terms of table accesses.
+             *
+             * For each super-table, check:
+             *
+             *  - Does the table exist (create an empty table if not)
+             *  - If so, is its element a table type (error if not)
+             *  - What table type is it?
+             *      - HTable: Table header -> automatically valid.
+             *      - DKTable: from dotted key-val definition -> Allowed, but the *last* segment must extend the DKtable as an
+             *      HTable.
+             *      - AoT: Array of Tables -> Allowed; last segment of the dotted key MUST extend
+             *
+             */
+
+            // Iterate through the entire key path.
+            // Make the iterator peekable to determine when we are on the last path segment.
+            let mut path_iter = path.into_iter().peekable();
+            let mut curr_table: &mut TOMLTable = &mut self.main_table;
+            while let Some(&pathseg) = path_iter.peek() {
+                // create the super table if it doesn't exist.
+                let key = pathseg.to_string();
+                if !curr_table.contains_key(&key) {
+                    curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
+                    curr_table = {
+                        if let TOMLType::HTable(ref mut new_table) = curr_table.get_mut(&key).unwrap() {
+                            new_table
+                        } else {
+                            panic!("TOMLParser::parse_table_header - mutable reference extraction from new table should never fail.");
+                        }
+                    }
+                } else {
+                    // BOOKMARK: 20240817 Checkpoint
+                    todo!("All of the access logic for currently-existing tables");
+                }
+            }
+            // Now: the path iterator is on the last portion of the key.
+        }
+        todo!();
+
+        // parse comment here?
+    }
+
+    /// Determines if the given path has already been used.
+    fn is_unique_table_header(&self, path: &TPath<'_>) -> bool {
+        let mut answer = true;
+        for kp in &self.table_heads {
+            if path == kp {
+                answer = false;
+            }
+        }
+        answer
     }
 }
 

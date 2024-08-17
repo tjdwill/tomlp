@@ -8,4 +8,5 @@ cargo run --bin test_escapes
 cargo run --bin test_strings
 cargo run --bin test_boolparse
 cargo run --bin test_dateparse
+cargo run --bin test_keyparse
 
