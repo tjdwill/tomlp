@@ -17,6 +17,10 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 17 August 2024
+
+Wrote the prototype for processing table headers, taking into account the type of table encountered as the table structure is traversed. Not sure if the code is "elegant" or organized properly, but I've commented the relevant function extensively to document what's going on.
+
 ## 16 August 2024
 
 I added the test for key parsing, and it worked on the first try! This marks the first Rust code snippet that I was able to implement without logic mistakes. A momentous occasion.

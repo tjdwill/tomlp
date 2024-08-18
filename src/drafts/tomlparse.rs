@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
-use crate::drafts::constants::{KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN};
+use crate::drafts::constants::{COMMENT_TOKEN, KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -97,7 +97,7 @@ impl TOMLParser {
     // Parsing Functions
     ////////////////////
 
-    // String parsing
+    // == String parsing ==
 
     pub fn parse_string(
         &mut self,
@@ -526,7 +526,7 @@ impl TOMLParser {
         }
     }
 
-    // Integer parsing
+    // == Integer parsing ==
     // This function doesn't need to take a mutable reference because there is no reason to
     // modify the structure. Is that the correct thing to do?
     pub fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
@@ -1060,83 +1060,141 @@ impl TOMLParser {
         Ok((tpath, ParserLine::freeze(context, count)))
     }
 
+    /// Processes table headers of form `[some_key_sequence.potentially.dotted]`
+    /// Parses dotted key, performs validation, and descends the table beginning
+    /// from the top-level, creating super-tables as necessary.
+    /// Returns a mutable reference to the deepest table referred to by the (dotted) key
     pub fn parse_table_header(
         &mut self,
         mut context: ParserLine,
-    ) -> Result<(&mut TOMLTable, ParserLine), String> {
+    ) -> Result<&mut TOMLTable, String> {
         let mut seg = context.next_seg().unwrap();
         // check to see if there is an array of tables first
         // skip the first '['
         seg.next();
         if let Some(&TABLE_OPEN_TOKEN) = seg.peek() {
             // Array of tables handling here
-        } else {
-            // the rest of the function
-            let (path, pline) = self.parse_key(context)?;
-            context = pline;
-            seg = context.next_seg().unwrap(); // we know the parse key function exits on either
-                                               // '[' or '='
-            if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
-                return Err(format!(
-                    "Line {}: Invalid Table Header; Must close with `{}`",
-                    context.line_num(),
-                    TABLE_CLOSE_TOKEN
-                ));
-            }
-            // == Path Handling ==
-            // check if path is included in the current listing of paths.
-            if !self.is_unique_table_header(&path) {
-                return Err(format!(
-                    "Line {}: Table header `{:?}` is already defined.",
-                    context.line_num(),
-                    &path
-                ));
-            }
-            /* Here, we know the path has not been used.
-             * Now, we must determine if the provided path is
-             * valid in terms of table accesses.
-             *
-             * For each super-table, check:
-             *
-             *  - Does the table exist (create an empty table if not)
-             *  - If so, is its element a table type (error if not)
-             *  - What table type is it?
-             *      - HTable: Table header -> automatically valid.
-             *      - DKTable: from dotted key-val definition -> Allowed, but the *last* segment must extend the DKtable as an
-             *      HTable.
-             *      - AoT: Array of Tables -> Allowed; last segment of the dotted key MUST extend
-             *
-             */
+            // TODO: Decide if I should change this overall function to assume *only* table header
+            // form (as in, we know it's not an AoT?)
+            todo!();
+        }
 
-            // Iterate through the entire key path.
-            // Make the iterator peekable to determine when we are on the last path segment.
-            let mut path_iter = path.into_iter().peekable();
-            let mut curr_table: &mut TOMLTable = &mut self.main_table;
-            while let Some(&pathseg) = path_iter.peek() {
-                // create the super table if it doesn't exist.
-                let key = pathseg.to_string();
-                if !curr_table.contains_key(&key) {
-                    curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
-                    curr_table = {
-                        if let TOMLType::HTable(ref mut new_table) = curr_table.get_mut(&key).unwrap() {
-                            new_table
-                        } else {
-                            panic!("TOMLParser::parse_table_header - mutable reference extraction from new table should never fail.");
-                        }
+        let (path, pline) = self.parse_key(context)?;
+        context = pline;
+        seg = context.next_seg().unwrap(); // we know the parse key function exits on either
+                                           // '[' or '='
+        if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
+            return Err(format!(
+                "Line {}: Invalid Table Header; Must close with `{}`",
+                context.line_num(),
+                TABLE_CLOSE_TOKEN
+            ));
+        } else {
+            // iterate until end of segment
+            seg.next();
+            seg.skip_ws();
+            if let Some(&ch) = seg.peek() {
+                let ch = ch.to_string();
+                return Err(format!(
+                    "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
+                    context.line_num(),
+                    ch
+                ));
+            }
+        }
+
+        // Key Path Handling
+        // check if path is included in the current listing of paths.
+        if !self.is_unique_table_header(&path) {
+            return Err(format!(
+                "Line {}: Table header `{:?}` is already defined.",
+                context.line_num(),
+                &path
+            ));
+        }
+        /* Here, we know the path has not been used.
+         * Now, we must determine if the provided path is
+         * valid in terms of table accesses.
+         *
+         * For each super-table, check:
+         *
+         *  - Does the table exist (create an empty table if not)
+         *  - If so, is its element a table type (error if not)
+         *  - What table type is it?
+         *      - HTable: Table header -> automatically valid.
+         *      - DKTable: from dotted key-val definition -> Allowed, but the *last* segment must extend the DKtable as an
+         *      HTable.
+         *      - AoT: Array of Tables -> Allowed; last segment of the dotted key MUST extend
+         *
+         */
+
+        // Iterate through the entire key path, polling the table structure beginning from the
+        // top-level.
+        // Make the iterator peekable to determine when we are on the last path segment.
+        let mut path_iter = path.into_iter().peekable();
+        let mut curr_table: &mut TOMLTable = &mut self.main_table;
+        while let Some(&pathseg) = path_iter.peek() {
+            let key = pathseg.to_string();
+            // create the super table if it doesn't exist.
+            if !curr_table.contains_key(&key) {
+                curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
+                curr_table = {
+                    if let TOMLType::HTable(ref mut new_table) = curr_table.get_mut(&key).unwrap() {
+                        new_table
+                    } else {
+                        panic!("TOMLParser::parse_table_header - mutable reference extraction from newly-created table should never fail.");
                     }
-                } else {
-                    // BOOKMARK: 20240817 Checkpoint
-                    todo!("All of the access logic for currently-existing tables");
+                }
+            } else {
+                // Try to get the next table
+                match curr_table.get_mut(&key).unwrap() {
+                    TOMLType::HTable(ref mut htable) => curr_table = htable,
+                    TOMLType::DKTable(ref mut dktable) => curr_table = dktable,
+                    TOMLType::AoT(ref mut aotable) => curr_table = aotable.last_mut().unwrap(),  // get the latest table in the array
+                    _ => return Err(format!(
+                            "Line {}: Table header error: Dotted key component does not refer to a table.", context.line_num()
+                        )),
                 }
             }
-            // Now: the path iterator is on the last portion of the key.
-        }
-        todo!();
 
-        // parse comment here?
+            // advance the iterator
+            path_iter.next();
+        }
+        // Now: the path iterator is on the last portion of the key.
+        let key = path_iter.next().unwrap().to_string();
+        assert_eq!(path_iter.next(), None);
+        if !curr_table.contains_key(&key) {
+            curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
+        }
+        // Update the current_table reference variable
+        if let TOMLType::HTable(ref mut table) = curr_table.get_mut(&key).unwrap() {
+            curr_table = table;
+        } else {
+            return Err(format!("Line {}: Table Header Error; last segment must point to a table previously defined with a header or must extend a table defined through key-value pair or array of tables.", context.line_num()));
+        }
+
+        // Add the full path to the collection
+        self.table_heads.push(path);
+
+        // parse comment here
+        if let Some(next) = context.next_seg() {
+            seg = next;
+            if let Some(&COMMENT_TOKEN) = seg.peek() {
+                let count = seg.count();
+                Self::parse_comment(ParserLine::freeze(context, count))?;
+            } else {
+                return Err(format!(
+                    "Line {}: Rogue non-comment character found.",
+                    context.line_num()
+                ));
+            }
+        }
+
+        // Done!
+        Ok(curr_table)
     }
 
-    /// Determines if the given path has already been used.
+    /// Determines if the given key path has already been used.
     fn is_unique_table_header(&self, path: &TPath<'_>) -> bool {
         let mut answer = true;
         for kp in &self.table_heads {
@@ -1145,6 +1203,35 @@ impl TOMLParser {
             }
         }
         answer
+    }
+
+    // === Comment Parsing ===
+    /// Handle TOML comments
+    fn parse_comment(mut pline: ParserLine) -> Result<(), String> {
+        let line_num = pline.line_num();
+        let mut iter = pline.next_seg().unwrap();
+        // skip delimiter;
+        assert_eq!(iter.peek(), Some(&COMMENT_TOKEN));
+        iter.next();
+        loop {
+            match iter.next() {
+                Some(ch) => {
+                    if !is_valid_comment_grapheme(ch) {
+                        return Err(format!(
+                            "Invalid Comment Character: {} on Line {}",
+                            ch, line_num
+                        ));
+                    }
+                }
+                None => {
+                    if let Some(next_iter) = pline.peek() {
+                        iter = next_iter;
+                    } else {
+                        return Ok(());
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1306,32 +1393,6 @@ fn is_octal(s: &str) -> bool {
         false
     } else {
         is_numeric(s)
-    }
-}
-
-fn parse_comment(mut context: ParserLine) -> Result<(), String> {
-    let line_num = context.line_num();
-    let mut iter = context.next_seg().unwrap();
-    loop {
-        match iter.next() {
-            Some(ch) => {
-                if !is_valid_comment_grapheme(ch) {
-                    return Err(format!(
-                        "Invalid Comment Character: {} on Line {}",
-                        ch, line_num
-                    ));
-                }
-            }
-            None => {
-                let next_iter = {
-                    match context.peek() {
-                        Some(iter) => iter,
-                        None => return Ok(()),
-                    }
-                };
-                iter = next_iter;
-            }
-        }
     }
 }
 
