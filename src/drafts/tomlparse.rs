@@ -7,7 +7,6 @@ use std::path::Path;
 use crate::drafts::constants::{COMMENT_TOKEN, KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
-
 // my imports
 use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
 use super::parsetools::{ParserLine, TOMLSeg, TPath};
@@ -621,77 +620,70 @@ impl TOMLParser {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut found_underscore = false;
-        // Check for leading zero
-        /*
-           A leading zero is one in which a zero is followed by any other digit or non-whitespace char.
-        */
         let mut output: i64 = 0;
-        if let Some(&"0") = seg.peek() {
-            seg.next();
-        } else {
-            // parse the number, checking for overflow
-            loop {
-                let previous = output;
-                match seg.peek() {
-                    None => {
-                        if found_underscore {
-                            return Err(format!(
-                                "Line {}: Integer Parsing Error: Underscore at end of integer.",
-                                line_num
-                            ));
-                        } else {
-                            break;
-                        }
-                    }
-                    Some(ch) => {
-                        match *ch {
-                            "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
-                                found_underscore = false; // is overwriting faster than doing a check every iteration?
-                                output = output
-                                    .wrapping_mul(10)
-                                    .wrapping_add(ch.parse::<i64>().unwrap());
 
-                                if previous > output {
-                                    return Err(format!(
-                                        "Line {}: Integer Parsing Error: Integer Overflow",
-                                        line_num
-                                    ));
-                                }
-                            }
-                            "_" => {
-                                if found_underscore {
-                                    return Err(format!(
-                                        "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
-                                    ));
-                                } else {
-                                    found_underscore = true;
-                                }
-                            }
-                            " " | "\t" | "\n" => {
-                                if found_underscore {
-                                    return Err(format!(
-                                        "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
-                                    ));
-                                } else {
-                                    break;
-                                }
-                            }
-                            _ => {
-                                if found_underscore {
-                                    return Err(format!(
-                                        "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
-                                    ));
-                                } else {
-                                    return Err(format!(
-                                        "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
-                                        line_num, ch
-                                    ));
-                                }
+        // parse the number, checking for overflow
+        loop {
+            let previous = output;
+            match seg.peek() {
+                None => {
+                    if found_underscore {
+                        return Err(format!(
+                            "Line {}: Integer Parsing Error: Underscore at end of integer.",
+                            line_num
+                        ));
+                    } else {
+                        break;
+                    }
+                }
+                Some(ch) => {
+                    match *ch {
+                        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                            found_underscore = false; // is overwriting faster than doing a check every iteration?
+                            output = output
+                                .wrapping_mul(10)
+                                .wrapping_add(ch.parse::<i64>().unwrap());
+
+                            if previous > output {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Integer Overflow",
+                                    line_num
+                                ));
                             }
                         }
-                        // advance iterator
-                        seg.next();
+                        "_" => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore must be sandwiched between two digits (ex. `12_000`)", line_num
+                                ));
+                            } else {
+                                found_underscore = true;
+                            }
+                        }
+                        " " | "\t" | "\n" => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                ));
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => {
+                            if found_underscore {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                ));
+                            } else {
+                                return Err(format!(
+                                    "Line {}: Integer Parsing Error: Invalid digit value '{}'.",
+                                    line_num, ch
+                                ));
+                            }
+                        }
                     }
+                    // advance iterator
+                    seg.next();
                 }
             }
         }
