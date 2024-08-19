@@ -1128,15 +1128,33 @@ impl TOMLParser {
          *
          */
 
-        // Iterate through the entire key path, polling the table structure beginning from the
-        // top-level.
+        // Iterate through the entire key path, polling the table structure beginning from the top-level.
         // Make the iterator peekable to determine when we are on the last path segment.
         let mut path_iter = path.into_iter().peekable();
         let mut curr_table: &mut TOMLTable = &mut self.main_table;
+        let mut pure_key_sequence = true; // do all key segments point to an HTable?
         while let Some(&pathseg) = path_iter.peek() {
             let key = pathseg.to_string();
-            // create the super table if it doesn't exist.
-            if !curr_table.contains_key(&key) {
+            if curr_table.contains_key(&key) {
+                // Try to get the next table
+                match curr_table.get_mut(&key).unwrap() {
+                    TOMLType::HTable(ref mut htable) => {
+                        curr_table = htable;
+                    }
+                    TOMLType::DKTable(ref mut dktable) => {
+                        curr_table = dktable;
+                        pure_key_sequence = false;
+                    }
+                    TOMLType::AoT(ref mut aotable) => {
+                        curr_table = aotable.last_mut().unwrap();  // get the latest table in the array
+                        pure_key_sequence = false;
+                    }
+                    _ => return Err(format!(
+                            "Line {}: Table header error: Dotted key component does not refer to a table.", context.line_num()
+                        )),
+                }
+            } else {
+                // create the super table
                 curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
                 curr_table = {
                     if let TOMLType::HTable(ref mut new_table) = curr_table.get_mut(&key).unwrap() {
@@ -1144,33 +1162,52 @@ impl TOMLParser {
                     } else {
                         panic!("TOMLParser::parse_table_header - mutable reference extraction from newly-created table should never fail.");
                     }
-                }
-            } else {
-                // Try to get the next table
-                match curr_table.get_mut(&key).unwrap() {
-                    TOMLType::HTable(ref mut htable) => curr_table = htable,
-                    TOMLType::DKTable(ref mut dktable) => curr_table = dktable,
-                    TOMLType::AoT(ref mut aotable) => curr_table = aotable.last_mut().unwrap(),  // get the latest table in the array
-                    _ => return Err(format!(
-                            "Line {}: Table header error: Dotted key component does not refer to a table.", context.line_num()
-                        )),
-                }
+                };
             }
-
             // advance the iterator
             path_iter.next();
         }
         // Now: the path iterator is on the last portion of the key.
         let key = path_iter.next().unwrap().to_string();
         assert_eq!(path_iter.next(), None);
-        if !curr_table.contains_key(&key) {
+        
+        // NOTE: This is a deliberately-nested `if` instead of an `&&` boolean.
+        // They are not equivalent in this context.
+        if curr_table.contains_key(&key) {
+            // Check for whether a non-HTable was found in the chain.
+            // This portion satisfies the following excerpt from the TOML spec:
+            /*
+                Since tables cannot be defined more than once, redefining such tables using a [table] header is not allowed.
+            */
+            if !pure_key_sequence {
+                return Err(format!(
+                    "Line {}: Cannot redefine previously-defined table entry.",
+                    context.line_num()
+                ));
+            }
+        } else {
+            /*  Source: https://toml.io/en/v1.0.0#table
+                The [table] form can, however, be used to define sub-tables within tables defined via dotted keys.
+
+                ```toml
+                [fruit]
+                apple.color = "red"
+                apple.taste.sweet = true
+
+                # [fruit.apple]  # INVALID
+                # [fruit.apple.taste]  # INVALID
+
+                [fruit.apple.texture]  # you can add sub-tables
+                smooth = true
+                ```
+            */
             curr_table.insert(key.clone(), TOMLType::HTable(TOMLTable::new()));
         }
         // Update the current_table reference variable
         if let TOMLType::HTable(ref mut table) = curr_table.get_mut(&key).unwrap() {
             curr_table = table;
         } else {
-            return Err(format!("Line {}: Table Header Error; last segment must point to a table previously defined with a header or must extend a table defined through key-value pair or array of tables.", context.line_num()));
+            return Err(format!("Line {}: Table Header Error; The last key segment must point to a table previously created as a supertable in a dotted header, or the segment must extend a table defined through either an array of tables or through a dotted key within a key-value pair.", context.line_num()));
         }
 
         // Add the full path to the collection
