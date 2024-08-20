@@ -41,6 +41,10 @@ impl TOMLParser {
         })
     }
 
+    pub fn view_table(&self) -> &TOMLTable {
+        &self.main_table
+    }
+
     fn validate_file(input: &str) -> Result<File, String> {
         use std::ffi::OsStr;
 
@@ -954,7 +958,7 @@ impl TOMLParser {
         let mut seg = context.next_seg().unwrap();
         seg.skip_ws();
 
-        /*  Try to parse a dotted key. The termination condition is when:
+        /*  Try to parse a dotted key. The termination condition is when either:
          *      - A `]` is found
          *      - An `=` is found
          */
@@ -972,8 +976,8 @@ impl TOMLParser {
                         }
                     }
                 }
-                Some(c) => {
-                    match *c {
+                Some(&c) => {
+                    match c {
                         TABLE_CLOSE_TOKEN | KEY_VAL_SEP => {
                             if !temp_buf.is_empty() {
                                 key_segs.push(temp_buf.clone());
@@ -1068,47 +1072,68 @@ impl TOMLParser {
         &mut self,
         mut context: ParserLine,
     ) -> Result<&mut TOMLTable, String> {
+        let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
-        // check to see if there is an array of tables first
         // skip the first '['
         seg.next();
+        // check to see if there is an array of tables first
         if let Some(&TABLE_OPEN_TOKEN) = seg.peek() {
             // Array of tables handling here
             // TODO: Decide if I should change this overall function to assume *only* table header
             // form (as in, we know it's not an AoT?)
-            todo!();
+            seg.next();
+            let count = seg.count();
+            return self.parse_aot_header(ParserLine::freeze(context, count));
         }
 
-        let (path, pline) = self.parse_key(context)?;
+    
+        let count = seg.count();
+        let (path, pline) = self.parse_key(ParserLine::freeze(context, count))?;
         context = pline;
         seg = context.next_seg().unwrap(); // we know the parse key function exits on either
                                            // '[' or '='
         if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
             return Err(format!(
                 "Line {}: Invalid Table Header; Must close with `{}`",
-                context.line_num(),
+                line_num,
                 TABLE_CLOSE_TOKEN
             ));
         } else {
             // iterate until end of segment
             seg.next();
             seg.skip_ws();
-            if let Some(&ch) = seg.peek() {
-                let ch = ch.to_string();
+            match seg.peek() {
+                None => {},
+                Some(&"\n") => {seg.next();}
+                Some(ch) => {
+                    let ch = ch.to_string();
+                    return Err(format!(
+                        "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
+                        line_num,
+                        ch
+                    ));
+                }
+            }
+        }
+        // Parse comment if applicable
+        if let Some(next) = context.next_seg() {
+            seg = next;
+            if let Some(&COMMENT_TOKEN) = seg.peek() {
+                let count = seg.count();
+                Self::parse_comment(ParserLine::freeze(context, count))?;
+            } else {
                 return Err(format!(
-                    "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
-                    context.line_num(),
-                    ch
+                    "Line {}: Rogue non-comment character found.",
+                    line_num
                 ));
             }
         }
 
         // Key Path Handling
-        // check if path is included in the current listing of paths.
         if !self.is_unique_table_header(&path) {
             return Err(format!(
                 "Line {}: Table header `{:?}` is already defined.",
-                context.line_num(),
+                line_num,
                 &path
             ));
         }
@@ -1119,12 +1144,12 @@ impl TOMLParser {
          * For each super-table, check:
          *
          *  - Does the table exist (create an empty table if not)
-         *  - If so, is its element a table type (error if not)
+         *  - If the key exists already, is its corresponding value a table type (error if not)
          *  - What table type is it?
          *      - HTable: Table header -> automatically valid.
          *      - DKTable: from dotted key-val definition -> Allowed, but the *last* segment must extend the DKtable as an
          *      HTable.
-         *      - AoT: Array of Tables -> Allowed; last segment of the dotted key MUST extend
+         *      - AoT: Array of Tables -> Allowed; last segment of the dotted key MUST extend as HTable
          *
          */
 
@@ -1132,8 +1157,17 @@ impl TOMLParser {
         // Make the iterator peekable to determine when we are on the last path segment.
         let mut path_iter = path.into_iter().peekable();
         let mut curr_table: &mut TOMLTable = &mut self.main_table;
-        let mut pure_key_sequence = true; // do all key segments point to an HTable?
-        while let Some(&pathseg) = path_iter.peek() {
+        let mut pure_key_sequence = true;   // do all key segments point to an HTable?
+        #[allow(unused_assignments)]
+        let mut pathseg = "";
+        loop {
+            pathseg = path_iter.next().unwrap();
+            if let None = path_iter.peek() { 
+                break;
+            }
+            //println!("{:?}", &path_iter);
+            // PERF: should I declare the key buffer outside of the loop and modify it instead of 
+            // instantiating a new one every time?
             let key = pathseg.to_string();
             if curr_table.contains_key(&key) {
                 // Try to get the next table
@@ -1150,7 +1184,7 @@ impl TOMLParser {
                         pure_key_sequence = false;
                     }
                     _ => return Err(format!(
-                            "Line {}: Table header error: Dotted key component does not refer to a table.", context.line_num()
+                            "Line {}: Table header error: Dotted key component does not refer to a table.", line_num
                         )),
                 }
             } else {
@@ -1164,15 +1198,15 @@ impl TOMLParser {
                     }
                 };
             }
-            // advance the iterator
-            path_iter.next();
         }
         // Now: the path iterator is on the last portion of the key.
-        let key = path_iter.next().unwrap().to_string();
+        // Ex:      some.dotted.key.sequence
+        //                          --------  <-- we're on this part.
+        let key = pathseg.to_string();
         assert_eq!(path_iter.next(), None);
         
         // NOTE: This is a deliberately-nested `if` instead of an `&&` boolean.
-        // They are not equivalent in this context.
+        // The two methods are not equivalent in this context.
         if curr_table.contains_key(&key) {
             // Check for whether a non-HTable was found in the chain.
             // This portion satisfies the following excerpt from the TOML spec:
@@ -1182,8 +1216,9 @@ impl TOMLParser {
             if !pure_key_sequence {
                 return Err(format!(
                     "Line {}: Cannot redefine previously-defined table entry.",
-                    context.line_num()
+                    line_num
                 ));
+            } else {  // we've already checked if the entire sequence has been defined
             }
         } else {
             /*  Source: https://toml.io/en/v1.0.0#table
@@ -1207,13 +1242,61 @@ impl TOMLParser {
         if let TOMLType::HTable(ref mut table) = curr_table.get_mut(&key).unwrap() {
             curr_table = table;
         } else {
-            return Err(format!("Line {}: Table Header Error; The last key segment must point to a table previously created as a supertable in a dotted header, or the segment must extend a table defined through either an array of tables or through a dotted key within a key-value pair.", context.line_num()));
+            return Err(format!("Line {}: Table Header Error; The last key segment must point to a table previously created as a supertable in a dotted header, or the segment must extend a table defined through either an array of tables or through a dotted key within a key-value pair.", line_num));
         }
 
         // Add the full path to the collection
         self.table_heads.push(path);
 
-        // parse comment here
+        // Done!
+        Ok(curr_table)
+    }
+
+    fn parse_aot_header(&mut self, context: ParserLine) -> Result<&mut TOMLTable, String> {
+        // assume we are *within* the square bracket delimiters already.
+        let (path, mut context) = self.parse_key(context)?;
+        let line_num = context.line_num();
+        
+        // == HANDLING the rest of the line == 
+        let mut seg = context.next_seg().unwrap(); // we know the parse key function exits on either
+                                                            // '[' or '='
+        // Handle closing delimiter
+        if let Some(&TABLE_CLOSE_TOKEN) = seg.peek() {
+            seg.next();
+            if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
+                return Err(format!(
+                    "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
+                    line_num,
+                    TABLE_CLOSE_TOKEN,
+                    TABLE_CLOSE_TOKEN
+                ));
+            } else {
+                seg.next();
+            }
+        }
+        else {
+            return Err(format!(
+                "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
+                line_num,
+                TABLE_CLOSE_TOKEN,
+                TABLE_CLOSE_TOKEN
+            ))
+        }
+        // iterate until end of segment
+        seg.skip_ws();
+        match seg.peek() {
+            None => {},
+            Some(&"\n") => {seg.next();}
+            Some(ch) => {
+                let ch = ch.to_string();
+                return Err(format!(
+                    "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
+                    line_num,
+                    ch
+                ));
+            }
+        }
+        // Parse comment if applicable
         if let Some(next) = context.next_seg() {
             seg = next;
             if let Some(&COMMENT_TOKEN) = seg.peek() {
@@ -1222,12 +1305,61 @@ impl TOMLParser {
             } else {
                 return Err(format!(
                     "Line {}: Rogue non-comment character found.",
-                    context.line_num()
+                    line_num
                 ));
             }
         }
 
-        // Done!
+        // == Validating the AoT header == 
+        /*
+            I don't think the TOML specification explicitly addresses if an AoT can be defined as an extension of a previously-defined table.
+            As a result, I will decide. The answer is no. To nest an array of tables, the parent element must itself be an array of tables.
+
+            In other words, in a dotted AoT key, each segment must point to an AoT if the key segment already has an associated value.
+        */
+        let mut curr_table: &mut TOMLTable = &mut self.main_table;
+        let mut path_iter = path.into_iter().peekable();
+        let mut pathseg: &str;
+        loop {
+            pathseg = path_iter.next().unwrap();
+            if let None = path_iter.peek() {
+                break
+            }
+            let key = pathseg.to_string();
+            if !curr_table.contains_key(&key) {
+                curr_table.insert(key.clone(), TOMLType::AoT(vec![TOMLTable::new()]));
+                if let TOMLType::AoT(ref mut aot) = curr_table.get_mut(&key).unwrap() {
+                    // get the latest table in the array
+                    curr_table = aot.last_mut().unwrap();
+                } else {
+                    panic!("TOMLParser::parse_aot_header should never fail to retrieve mutable reference to newly-created AoT table.");
+                }
+            } else if let TOMLType::AoT(ref mut aot) = curr_table.get_mut(&key).unwrap() {
+                // update reference to table
+                curr_table = aot.last_mut().unwrap();
+            } else {
+                return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num))
+            }
+        }
+        // on last segment of key
+        let key = pathseg.to_string();
+        if !curr_table.contains_key(&key) {
+            curr_table.insert(key.clone(), TOMLType::AoT(vec![TOMLTable::new()]));
+            if let TOMLType::AoT(ref mut aot) = curr_table.get_mut(&key).unwrap() {
+                // get the latest table in the array
+                curr_table = aot.last_mut().unwrap();
+            } else {
+                panic!("TOMLParser::parse_aot_header should never fail to retrieve mutable reference to newly-created AoT table.");
+            }
+        } else if let TOMLType::AoT(ref mut aot) = curr_table.get_mut(&key).unwrap() {
+            // Insert a new table at the end of the array
+            // Return the reference to said table
+            aot.push(TOMLTable::new());
+            curr_table = aot.last_mut().unwrap();
+        } else {
+            return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num))
+        }
+
         Ok(curr_table)
     }
 
@@ -1252,6 +1384,8 @@ impl TOMLParser {
         iter.next();
         loop {
             match iter.next() {
+                // drop the newline
+                Some("\n") => {}
                 Some(ch) => {
                     if !is_valid_comment_grapheme(ch) {
                         return Err(format!(

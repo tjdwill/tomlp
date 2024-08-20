@@ -17,6 +17,32 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 19 August 2024
+
+I tested and debugged the table heading parsing function. I also implemented the array of tables heading function and tests.
+
+Given the following TOML:
+
+```toml
+[  x.y.z.w]
+[x.y."\u0001f525"]
+[   x         ]   # this is a comment
+[[hello.variety]]
+[hello.subtable]
+[[hello.variety]]
+[[hello.variety]]
+[[hello]]
+[[hello]]
+[[hello]]
+```
+
+Here is the following (debug formatted) output:
+```
+{"x": HTable({"y": HTable({"🔥": HTable({}), "z": HTable({"w": HTable({})})})}), "hello": AoT([{"variety": AoT([{}, {}, {}]), "subtable": HTable({})}, {}, {}, {}])}
+```
+ 
+It works as desired, even generating subtables within array of tables. This was a great success. Hopefully, no unknown bug will surface.
+
 ## 17 August 2024
 
 Wrote the prototype for processing table headers, taking into account the type of table encountered as the table structure is traversed. Not sure if the code is "elegant" or organized properly, but I've commented the relevant function extensively to document what's going on.

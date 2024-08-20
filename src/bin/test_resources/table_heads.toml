@@ -1,0 +1,10 @@
+[  x.y.z.w]
+[x.y."\u0001f525"]
+[   x         ]   # this is a comment
+[[hello.variety]]
+[hello.subtable]
+[[hello.variety]]
+[[hello.variety]]
+[[hello]]
+[[hello]]
+[[hello]]
