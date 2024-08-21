@@ -3,7 +3,8 @@ use tomlp::drafts::{parsetools::ParserLine, tokens::TOMLType, tomlparse::TOMLPar
 type TestRet = Result<(), String>;
 fn main() -> TestRet {
     test_float()?;
-    nan_test()
+    nan_test()?;
+    invalid_format()
 }
 
 fn test_float() -> TestRet {
@@ -61,5 +62,21 @@ fn nan_test() -> TestRet {
             _ => return Err(String::from("Will never reach here.")),
         }
     }
+    Ok(())
+}
+
+fn invalid_format() -> TestRet {
+    const BAD_F64: [&str; 3] = [".12", "3.e+20", "12."];
+    for s in BAD_F64 {
+        let pline = ParserLine::new(s.to_string(), 0);
+        let result = TOMLParser::parse_float(pline);
+        match result {
+            Err(_msg) => {
+                // println!("{_msg}");
+            }
+            _ => return Err(String::from("Failed to catch invalid format.")),
+        }
+    }
+
     Ok(())
 }

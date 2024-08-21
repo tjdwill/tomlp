@@ -102,6 +102,7 @@ impl TOMLParser {
 
     // == String parsing ==
 
+    /// Parses TOML-style basic and multi-line quoted strings
     pub fn parse_string(
         &mut self,
         mut context: ParserLine,
@@ -119,123 +120,6 @@ impl TOMLParser {
         self.parse_multi_string(context)
     }
 
-    pub fn parse_literal_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
-        // UNWRAP justification: a " character was found before calling this function, so we know the segment exists.
-        let mut seg = context.peek().unwrap();
-        for _ in 0..3 {
-            if let Some(&LITERAL_STR_TOKEN) = seg.peek() {
-                seg.next();
-                continue;
-            }
-            return self.parse_basic_litstr(context);
-        }
-        self.parse_multi_litstr(context)
-    }
-
-    fn parse_basic_litstr(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
-        let mut seg = context.next_seg().unwrap();
-        seg.next(); // throw away delimiter.
-        let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
-        loop {
-            match seg.next() {
-                None => match context.next_seg() {
-                    None => {
-                        return Err(format!(
-                            "Err: Line {}: Non-terminating literal string.",
-                            self.line_num
-                        ))
-                    }
-                    Some(next) => {
-                        seg = next;
-                        continue;
-                    }
-                },
-                Some(ch) => match ch {
-                    LITERAL_STR_TOKEN => break,
-                    _ => {
-                        if !is_valid_litstr_grapheme(ch) {
-                            return Err(format!(
-                                "Err: Line {}: Invalid Unicode Character U+{:X} in literal string.",
-                                self.line_num,
-                                ch.chars().next().unwrap() as u32,
-                            ));
-                        } else {
-                            grapheme_pool.push_str(ch);
-                        }
-                    }
-                },
-            }
-        }
-        let count = seg.count();
-        Ok((
-            TOMLType::LitStr(grapheme_pool),
-            ParserLine::freeze(context, count),
-        ))
-    }
-
-    fn parse_multi_litstr(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
-        let mut apostrophe_count = 0;
-        let sz = self.buffer.capacity();
-        let mut grapheme_pool = String::with_capacity(sz);
-
-        let mut seg = context.next_seg().unwrap();
-        // throw away first three characters (the delimiter)
-        for _ in 0..3 {
-            seg.next();
-        }
-        // trim immediate newline
-        if let Some(&"\n") = seg.peek() {
-            seg.next();
-        }
-        // enter multi-string context
-        let mut graphemes_added = 0;
-        while apostrophe_count < 3 {
-            match seg.next() {
-                Some(ch) => {
-                    graphemes_added += 1;
-                    match ch {
-                        LITERAL_STR_TOKEN => apostrophe_count += 1,
-                        _ => apostrophe_count = 0,
-                    }
-                    grapheme_pool.push_str(ch);
-                }
-
-                None => {
-                    // get a newline if necessary
-                    if context.is_exhausted() {
-                        context = self.next_parserline()?;
-                    }
-                    seg = context.next_seg().unwrap();
-                }
-            }
-        } // Found closing delimiter
-
-        // check for extra apostrophe (this is a really annoying thing to allow)
-        // REFERENCE: https://toml.io/en/v1.0.0#string
-        if let Some(&LITERAL_STR_TOKEN) = seg.peek() {
-            grapheme_pool.push_str(seg.next().unwrap());
-            graphemes_added += 1;
-        }
-
-        let outstring = grapheme_pool
-            .as_str()
-            .graphemes(true)
-            .take(graphemes_added - 3)
-            .collect::<String>();
-        let count = seg.count();
-        let context = ParserLine::freeze(context, count);
-        Ok((TOMLType::MultiLitStr(outstring), context))
-    }
-
     fn parse_multi_string(
         &mut self,
         mut context: ParserLine,
@@ -249,12 +133,13 @@ impl TOMLParser {
         for _ in 0..3 {
             seg.next();
         }
-        // trim immediate newline
+        // trim immediate newline if present
         if let Some(&"\n") = seg.peek() {
             seg.next();
         }
-        // in multi-string context
+        // entered multi-string context
         let mut graphemes_added = 0;
+        // terminate when we've found the three consecutive quotation marks
         while quote_count < 3 {
             match seg.next() {
                 Some(ch) => {
@@ -394,16 +279,17 @@ impl TOMLParser {
     /// Assumes Unix OS so the newline can fit into a char.
     /// Returns tuple of (char, ParserLine, bool) where each
     /// is (escaped_char, context, increment_delimiter)
-    /// `increment_delimiter` is a way to ensure an escaped `"` is
-    /// counted if if's the first character after a line escape.
-    /// Basically, it's needed for the parsing to perform properly.
+    /// `increment_delimiter` is a way to ensure `"` are
+    /// counted properly if if's the first character after a line escape.
+    /// Basically, it distinguishes directly-escaped quotation marks from
+    /// a quotation mark that follows a lone backslashed line break.
     pub fn parse_multi_escape_sequence(
         &mut self,
         mut context: ParserLine,
     ) -> Result<(char, ParserLine, bool), String> {
         // PLATFORM SUPPORT: After the String is made, can we transform it such that \n -> \r\n?
         // TODO: Check logic for this function
-        // Assume we have identified a backslash
+        // Assume we have identified and consumed a backslash
         let mut seg = {
             match context.next_seg() {
                 Some(next_seg) => next_seg,
@@ -457,7 +343,7 @@ impl TOMLParser {
     }
 
     fn parse_basic_escape_sequence(mut context: ParserLine) -> Option<(char, ParserLine)> {
-        // Assume we have identified a backslash
+        // Assume we have identified and consumed a backslash
         let mut seg = {
             match context.next_seg() {
                 None => return None,
@@ -527,6 +413,124 @@ impl TOMLParser {
                 }
             }
         }
+    }
+
+    /// Parses TOML-style basic and multi-line literal strings
+    pub fn parse_literal_string(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
+        // UNWRAP justification: a ' character was found before calling this function, so we know the segment exists.
+        let mut seg = context.peek().unwrap();
+        for _ in 0..3 {
+            if let Some(&LITERAL_STR_TOKEN) = seg.peek() {
+                seg.next();
+                continue;
+            }
+            return self.parse_basic_litstr(context);
+        }
+        self.parse_multi_litstr(context)
+    }
+
+    fn parse_basic_litstr(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
+        let mut seg = context.next_seg().unwrap();
+        seg.next(); // throw away delimiter.
+        let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
+        loop {
+            match seg.next() {
+                None => match context.next_seg() {
+                    None => {
+                        return Err(format!(
+                            "Err: Line {}: Non-terminating literal string.",
+                            self.line_num
+                        ))
+                    }
+                    Some(next) => {
+                        seg = next;
+                        continue;
+                    }
+                },
+                Some(ch) => match ch {
+                    LITERAL_STR_TOKEN => break,
+                    _ => {
+                        if !is_valid_litstr_grapheme(ch) {
+                            return Err(format!(
+                                "Err: Line {}: Invalid Unicode Character U+{:X} in literal string.",
+                                self.line_num,
+                                ch.chars().next().unwrap() as u32,
+                            ));
+                        } else {
+                            grapheme_pool.push_str(ch);
+                        }
+                    }
+                },
+            }
+        }
+        let count = seg.count();
+        Ok((
+            TOMLType::LitStr(grapheme_pool),
+            ParserLine::freeze(context, count),
+        ))
+    }
+
+    fn parse_multi_litstr(
+        &mut self,
+        mut context: ParserLine,
+    ) -> Result<(TOMLType, ParserLine), String> {
+        let mut apostrophe_count = 0;
+        let sz = self.buffer.capacity();
+        let mut grapheme_pool = String::with_capacity(sz);
+
+        let mut seg = context.next_seg().unwrap();
+        // throw away first three characters (the delimiter)
+        for _ in 0..3 {
+            seg.next();
+        }
+        // trim immediate newline
+        if let Some(&"\n") = seg.peek() {
+            seg.next();
+        }
+        // enter multi-string context
+        let mut graphemes_added = 0;
+        while apostrophe_count < 3 {
+            match seg.next() {
+                Some(ch) => {
+                    graphemes_added += 1;
+                    match ch {
+                        LITERAL_STR_TOKEN => apostrophe_count += 1,
+                        _ => apostrophe_count = 0,
+                    }
+                    grapheme_pool.push_str(ch);
+                }
+
+                None => {
+                    // get a newline if necessary
+                    if context.is_exhausted() {
+                        context = self.next_parserline()?;
+                    }
+                    seg = context.next_seg().unwrap();
+                }
+            }
+        } // Found closing delimiter
+
+        // check for extra apostrophe (this is a really annoying thing to allow)
+        // REFERENCE: https://toml.io/en/v1.0.0#string
+        if let Some(&LITERAL_STR_TOKEN) = seg.peek() {
+            grapheme_pool.push_str(seg.next().unwrap());
+            graphemes_added += 1;
+        }
+
+        let outstring = grapheme_pool
+            .as_str()
+            .graphemes(true)
+            .take(graphemes_added - 3)
+            .collect::<String>();
+        let count = seg.count();
+        let context = ParserLine::freeze(context, count);
+        Ok((TOMLType::MultiLitStr(outstring), context))
     }
 
     // == Integer parsing ==
@@ -663,7 +667,8 @@ impl TOMLParser {
                         " " | "\t" | "\n" => {
                             if found_underscore {
                                 return Err(format!(
-                                    "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                    "Line {}: Integer Parsing Error: Underscore at end of integer.",
+                                    line_num
                                 ));
                             } else {
                                 break;
@@ -672,7 +677,8 @@ impl TOMLParser {
                         _ => {
                             if found_underscore {
                                 return Err(format!(
-                                    "Line {}: Integer Parsing Error: Underscore at end of integer.", line_num
+                                    "Line {}: Integer Parsing Error: Underscore at end of integer.",
+                                    line_num
                                 ));
                             } else {
                                 return Err(format!(
@@ -870,10 +876,9 @@ impl TOMLParser {
         Ok((output, ParserLine::freeze(context, count)))
     }
 
+    /// Parses TOML-valid float into f64
     pub fn parse_float(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
         // Assume a non-empty context.
-        // This isn't one-to-one with the TOML spec, but, honestly, I will accept it.
-        // It beats the alternative of manually parsing IEE 754 binary64 floats.
 
         let is_keepable = |x: &&str| {
             let x = *x;
@@ -887,13 +892,22 @@ impl TOMLParser {
                 "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
                 context.line_num()
             ));
-        } else if let Some(".") = format_check_iter.last() {
-            return Err(format!(
-                "Line {}: Float Parsing Error: Cannot begin float with decimal point `.`",
-                context.line_num()
-            ));
+        } else {
+            let mut format_check_iter = context.peek().unwrap().filter(is_keepable).peekable();
+            while let Some(ch) = format_check_iter.next() {
+                if ch == "." {
+                    match format_check_iter.peek() {
+                        Some(&"0" | &"1"| &"2" | &"3" | &"4"| &"5" | &"6" | &"7" | &"8" | &"9") => {}
+                        _ => return Err(format!(
+                                "Line {}: Float Parsing Error: decimal point must be followed by a digit.",
+                                context.line_num()
+                            )),
+                    }
+                }
+            }
         }
 
+        // Parse the float
         let seg = context.next_seg().unwrap();
         let result = seg.content().trim().replace("_", "").parse::<f64>();
         match result {
@@ -922,6 +936,7 @@ impl TOMLParser {
         }
     }
 
+    // == DateTime Parsing ==
     pub fn parse_date(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
         let mut seg = context.next_seg().unwrap();
         let test_str = seg.content().trim();
@@ -1078,7 +1093,6 @@ impl TOMLParser {
             return self.parse_aot_header(ParserLine::freeze(context, count));
         }
 
-    
         let count = seg.count();
         let (path, pline) = self.parse_key(ParserLine::freeze(context, count))?;
         context = pline;
@@ -1087,46 +1101,20 @@ impl TOMLParser {
         if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
             return Err(format!(
                 "Line {}: Invalid Table Header; Must close with `{}`",
-                line_num,
-                TABLE_CLOSE_TOKEN
+                line_num, TABLE_CLOSE_TOKEN
             ));
         } else {
             // iterate until end of segment
             seg.next();
-            seg.skip_ws();
-            match seg.peek() {
-                None => {},
-                Some(&"\n") => {seg.next();}
-                Some(ch) => {
-                    let ch = ch.to_string();
-                    return Err(format!(
-                        "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
-                        line_num,
-                        ch
-                    ));
-                }
-            }
-        }
-        // Parse comment if applicable
-        if let Some(next) = context.next_seg() {
-            seg = next;
-            if let Some(&COMMENT_TOKEN) = seg.peek() {
-                let count = seg.count();
-                Self::parse_comment(ParserLine::freeze(context, count))?;
-            } else {
-                return Err(format!(
-                    "Line {}: Rogue non-comment character found.",
-                    line_num
-                ));
-            }
+            let count = seg.count();
+            Self::process_eol(ParserLine::freeze(context, count))?;
         }
 
         // Key Path Handling
         if !self.is_unique_table_header(&path) {
             return Err(format!(
                 "Line {}: Table header `{:?}` is already defined.",
-                line_num,
-                &path
+                line_num, &path
             ));
         }
         /* Here, we know the path has not been used.
@@ -1149,16 +1137,15 @@ impl TOMLParser {
         // Make the iterator peekable to determine when we are on the last path segment.
         let mut path_iter = path.into_iter().peekable();
         let mut curr_table: &mut TOMLTable = &mut self.main_table;
-        let mut pure_key_sequence = true;   // do all key segments point to an HTable?
-        #[allow(unused_assignments)]
-        let mut pathseg = "";
+        let mut pure_key_sequence = true; // do all key segments point to an HTable?
+        let mut pathseg;
         loop {
             pathseg = path_iter.next().unwrap();
-            if let None = path_iter.peek() { 
+            if let None = path_iter.peek() {
                 break;
             }
             //println!("{:?}", &path_iter);
-            // PERF: should I declare the key buffer outside of the loop and modify it instead of 
+            // PERF: should I declare the key buffer outside of the loop and modify it instead of
             // instantiating a new one every time?
             let key = pathseg.to_string();
             if curr_table.contains_key(&key) {
@@ -1196,7 +1183,7 @@ impl TOMLParser {
         //                          --------  <-- we're on this part.
         let key = pathseg.to_string();
         assert_eq!(path_iter.next(), None);
-        
+
         // NOTE: This is a deliberately-nested `if` instead of an `&&` boolean.
         // The two methods are not equivalent in this context.
         if curr_table.contains_key(&key) {
@@ -1210,7 +1197,7 @@ impl TOMLParser {
                     "Line {}: Cannot redefine previously-defined table entry.",
                     line_num
                 ));
-            } else {  // we've already checked if the entire sequence has been defined
+            } else { // we've already checked if the entire sequence has been defined
             }
         } else {
             /*  Source: https://toml.io/en/v1.0.0#table
@@ -1248,61 +1235,31 @@ impl TOMLParser {
         // assume we are *within* the square bracket delimiters already.
         let (path, mut context) = self.parse_key(context)?;
         let line_num = context.line_num();
-        
-        // == HANDLING the rest of the line == 
+
+        // == HANDLING the rest of the line ==
         let mut seg = context.next_seg().unwrap(); // we know the parse key function exits on either
-                                                            // '[' or '='
-        // Handle closing delimiter
+                                                   // '[' or '='
+                                                   // Handle closing delimiter
         if let Some(&TABLE_CLOSE_TOKEN) = seg.peek() {
             seg.next();
             if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
                 return Err(format!(
                     "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
-                    line_num,
-                    TABLE_CLOSE_TOKEN,
-                    TABLE_CLOSE_TOKEN
+                    line_num, TABLE_CLOSE_TOKEN, TABLE_CLOSE_TOKEN
                 ));
             } else {
                 seg.next();
             }
-        }
-        else {
+        } else {
             return Err(format!(
                 "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
-                line_num,
-                TABLE_CLOSE_TOKEN,
-                TABLE_CLOSE_TOKEN
-            ))
+                line_num, TABLE_CLOSE_TOKEN, TABLE_CLOSE_TOKEN
+            ));
         }
-        // iterate until end of segment
-        seg.skip_ws();
-        match seg.peek() {
-            None => {},
-            Some(&"\n") => {seg.next();}
-            Some(ch) => {
-                let ch = ch.to_string();
-                return Err(format!(
-                    "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
-                    line_num,
-                    ch
-                ));
-            }
-        }
-        // Parse comment if applicable
-        if let Some(next) = context.next_seg() {
-            seg = next;
-            if let Some(&COMMENT_TOKEN) = seg.peek() {
-                let count = seg.count();
-                Self::parse_comment(ParserLine::freeze(context, count))?;
-            } else {
-                return Err(format!(
-                    "Line {}: Rogue non-comment character found.",
-                    line_num
-                ));
-            }
-        }
+        let count = seg.count();
+        Self::process_eol(ParserLine::freeze(context, count))?;
 
-        // == Validating the AoT header == 
+        // == Validating the AoT header ==
         /*
             I don't think the TOML specification explicitly addresses if an AoT can be defined as an extension of a previously-defined table.
             As a result, I will decide. The answer is no. To nest an array of tables, the parent element must itself be an array of tables.
@@ -1315,7 +1272,7 @@ impl TOMLParser {
         loop {
             pathseg = path_iter.next().unwrap();
             if let None = path_iter.peek() {
-                break
+                break;
             }
             let key = pathseg.to_string();
             if !curr_table.contains_key(&key) {
@@ -1330,7 +1287,7 @@ impl TOMLParser {
                 // update reference to table
                 curr_table = aot.last_mut().unwrap();
             } else {
-                return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num))
+                return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num));
             }
         }
         // on last segment of key
@@ -1349,7 +1306,7 @@ impl TOMLParser {
             aot.push(TOMLTable::new());
             curr_table = aot.last_mut().unwrap();
         } else {
-            return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num))
+            return Err(format!("Line {}: Nested Arrays of Tables require each parent itself in the dotted key to point to an Array of Tables.", line_num));
         }
 
         Ok(curr_table)
@@ -1367,34 +1324,53 @@ impl TOMLParser {
     }
 
     // === Comment Parsing ===
-    /// Handle TOML comments
-    fn parse_comment(mut pline: ParserLine) -> Result<(), String> {
-        let line_num = pline.line_num();
-        let mut iter = pline.next_seg().unwrap();
-        // skip delimiter;
-        assert_eq!(iter.peek(), Some(&COMMENT_TOKEN));
-        iter.next();
-        loop {
-            match iter.next() {
-                // drop the newline
-                Some("\n") => {}
-                Some(ch) => {
-                    if !is_valid_comment_grapheme(ch) {
-                        return Err(format!(
-                            "Invalid Comment Character: {} on Line {}",
-                            ch, line_num
-                        ));
-                    }
-                }
-                None => {
-                    if let Some(next_iter) = pline.peek() {
-                        iter = next_iter;
-                    } else {
-                        return Ok(());
+    /// Processes the end of the given line
+    fn process_eol(mut context: ParserLine) -> Result<(), String> {
+        let line_num = context.line_num();
+        let mut iter = context.next_seg().unwrap();
+        iter.skip_ws();
+
+        match iter.next() {
+            Some("\n") => {}
+            Some(COMMENT_TOKEN) => {
+                loop {
+                    match iter.next() {
+                        // drop the newline
+                        Some("\n") => {}
+                        Some(ch) => {
+                            if !is_valid_comment_grapheme(ch) {
+                                return Err(format!(
+                                    "Invalid Comment Character: {} on Line {}",
+                                    ch, line_num
+                                ));
+                            }
+                        }
+                        None => {
+                            if let Some(next_iter) = context.next_seg() {
+                                iter = next_iter;
+                            } else {
+                                break;
+                            }
+                        }
                     }
                 }
             }
+            Some(ch) => {
+                let ch = ch.to_string();
+                return Err(format!(
+                    "Line {}: Rogue non-whitespace character `{}`  (outside of comment).",
+                    line_num, ch
+                ));
+            }
+            None => {
+                if let Some(seg) = context.next_seg() {
+                    let count = seg.count();
+                    return Self::process_eol(ParserLine::freeze(context, count));
+                }
+            }
         }
+        assert!(context.is_exhausted());
+        Ok(())
     }
 }
 

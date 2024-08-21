@@ -5,8 +5,8 @@ cargo run --bin test_parse
 cargo run --bin test_floatparse
 cargo run --bin test_intparse
 cargo run --bin test_escapes
-cargo run --bin test_strings
 cargo run --bin test_boolparse
 cargo run --bin test_dateparse
+cargo run --bin test_strings
 cargo run --bin test_keyparse
-
+cargo run --bin test_tablehead

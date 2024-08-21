@@ -17,6 +17,67 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 21 August 2024
+
+Today, I want to take stock of the current parsing functions to ensure I know what is happening in each one. Meaning, 
+
+- What assumption(s) do I make about the parsing context upon entering a given function?
+- What information is returned?
+
+### Context Assumptions
+
+When calling function \_, I assume that we begin:
+
+| Parsing Function              | Context                                                           | 
+| ----------------              | -------                                                           |
+|  **String Functions**         |                                                                   | 
+| `parse_string`                | On the first `"`                                                  | 
+| `parse_multi_string`          | On the first `"`                                                  |
+| `parse_basic_string`          | On the first `"`                                                  |
+| `parse_multi_escape_sequence` | Immediately *after* the backslash                                 |
+| `parse_basic_escape_sequence` | Immediately *after* the backslash                                 |
+| `get_nonwhitespace`           | Either on whitespace character OR on exhausted ParserLine         |
+| `escape_utf8`                 | Immediately after the `u` in an escaped `\u` sequence             |
+| `parse_literal_string`        | On the first `'`                                                  | 
+| `parse_multi_string`          | On the first `'`                                                  |
+| `parse_basic_litstr`          | On the first `'`                                                  |
+| **Integer Parsing**           |                                                                   |
+| `parse_integer`               |  Assume we start on whitespace or directly on a valid character   |
+| `dec_parse`                   | On a digit from 1..=9 (but not 0)                                 |
+| `nondec_parse`                | On some digit from 0..=F                                          |
+| `hex_parse`                   | On some digit from 0..=F                                          | 
+| `oct_parse`                   | On some digit from 0..=7                                          |
+| `bin_parse`                   | On some digit from 0..=1                                          |
+| **Float Parsing**             |                                                                   |
+| `parse_float`                 | Whitespace or on valid float character                            |
+| **Boolean Parsing**           |                                                                   |
+| `parse_bool`                  | On whitespace or on character.                                    |
+| **Date Parsing**              |                                                                   |
+| `parse_date`                  | On whitespace or on character.                                    |
+| **Table/Key Parsing**         |                                                                   |
+| `parse_key`                   | On whitespace or on character.                                    |
+| `parse_table_header`          | On `[`                                                            |
+| `parse_aot_header`            | On Whitespace or valid key character                              |
+
+### To-Do
+
+At this stage, I now have to complete the following for the parser:
+
+- [ ] Key-Value Parsing
+- [ ] Inline Tables 
+- [ ] Arrays 
+- [ ] Table exportation 
+- [ ] Testing
+- [ ] Reorganization and public interfacing
+
+## 20 August 2024
+
+There were hidden bugs. One such bug was a nasty infinite loop. I've fixed them, and I've also replaced the comment parsing function with a function that instead processes the end of a given line, comment or no comment. This way, I don't need to do any special checking before parsing a comment; I can just say, "process the rest of the line".
+
+One question I need to answer now is *when* to process the end of a line. I think I may do it at the end of a given parsing function. This way, I don't need to return the context from an upper-level parsing function, and I can assume that the line is completely done with.
+
+... After some thought, the answer is "no". Because I have to take arrays into account, I can't process the end of a given line after parsing a value because there may be a comma at the end of a value. In other words, unlike a table header context, I can't guarantee that there isn't a comma that signifies another element.
+
 ## 19 August 2024
 
 I tested and debugged the table heading parsing function. I also implemented the array of tables heading function and tests.
