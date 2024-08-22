@@ -232,34 +232,34 @@ impl ParserLine {
         let mut byte_nums: Vec<usize> = vec![];
         let mut iter = s.grapheme_indices(true).peekable();
 
-        let mut graphemes = 0;
+        let mut grapheme_count = 0;
         while let Some((byte_num, ch)) = iter.next() {
             match ch {
                 COMMENT_TOKEN => {
                     byte_nums.push(byte_num);
-                    seg_nums.push(graphemes);
+                    seg_nums.push(grapheme_count);
                 }
                 KEY_VAL_SEP | SEQUENCE_DELIM => {
                     // push this delimiter's byte_num and the next grapheme's
                     // This is so the segment is only one grapheme long.
                     byte_nums.push(byte_num);
-                    seg_nums.push(graphemes);
+                    seg_nums.push(grapheme_count);
 
                     if iter.peek().is_none() {
                         panic!("<ParserLine::find_segments>: Premature EoF.");
                     }
                     let (next_offset, _) = iter.peek().unwrap();
                     byte_nums.push(*next_offset);
-                    seg_nums.push(graphemes + 1);
+                    seg_nums.push(grapheme_count + 1);
                 }
                 _ => {
-                    if graphemes == 0 {
+                    if grapheme_count == 0 {
                         byte_nums.push(0);
                         seg_nums.push(0);
                     }
                 }
             }
-            graphemes += 1;
+            grapheme_count += 1;
         }
 
         // The segment numbers are monotonically increasing, so we can sort and remove duplicates
@@ -267,7 +267,7 @@ impl ParserLine {
         // These duplicates would result in empty segments if left in the vector.
         if !seg_nums.is_empty() {
             byte_nums.push(s.len());
-            seg_nums.push(s.len()); // Add last range endpoint.
+            seg_nums.push(grapheme_count); // Add last range endpoint.
         }
         seg_nums.sort();
         seg_nums.dedup();

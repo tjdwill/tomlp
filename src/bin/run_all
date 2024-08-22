@@ -1,0 +1,7 @@
+#!/usr/bin/sh
+
+# Run all tests, printable and non-printable
+
+cd $tomlp/src/bin
+./run_silents
+./run_printables

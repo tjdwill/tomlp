@@ -1,0 +1,11 @@
+#!/usr/bin/sh
+
+# Runs all tests that print to the console.
+
+cd $tomlp/src/bin
+cargo run --bin test_parse
+cargo run --bin test_dateparse
+cargo run --bin test_strings
+cargo run --bin test_keyparse
+cargo run --bin test_tablehead
+cargo run --bin test_keyvals

@@ -14,9 +14,12 @@ use super::constants::{LITERAL_STR_TOKEN, STR_TOKEN};
 use super::parsetools::{ParserLine, TOMLSeg, TPath};
 pub use super::tokens::{TOMLTable, TOMLType};
 
+// Useful Types and Constants
 static EOF_ERROR: &str = "End of File during parsing operation.";
-type InnerParseResult = Result<(TOMLType, ParserLine), String>;  // return type alias to ensure
-                                                                 // internal consistency
+type InnerParseResult<T> = Result<(T, ParserLine), String>;  // return type alias to ensure
+pub struct KeyVal<'a>(pub TPath<'a>, pub TOMLType); 
+
+
 #[derive(Debug)]
 pub struct TOMLParser {
     buffer: String,          // Contains a given line.
@@ -106,8 +109,30 @@ impl TOMLParser {
     // Parsing Functions
     ////////////////////
 
+    pub fn parse_keyval(&mut self, mut context: ParserLine) -> InnerParseResult<KeyVal> {
+        // Assume we begin on non-whitespace
+        let (key, mut context) = self.parse_key(context)?;
+
+        let mut seg = context.next_seg().unwrap();
+        // println!("EQUAL CHECK: {seg:?}");
+        if seg.next() != Some(KEY_VAL_SEP) {
+            return Err(format!("Line {}: Equal sign must follow key in a key-value pair.", context.line_num()));
+        } else {
+            seg = {
+                match context.next_seg() {
+                    Some(next) => next,
+                    None => return Err(EOF_ERROR.to_string())
+                }
+            };
+        }
+
+        let count = seg.count();
+        let (val, pline) = self.parse_value(ParserLine::freeze(context, count))?;
+        
+        Ok((KeyVal(key, val), pline))
+    }
     /// Parse the input into a valid TOML type.
-    pub fn parse_value(&mut self, mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_value(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // Assume we begin on whitespace
         let mut seg = match context.next_seg() {
             Some(next) => next,
@@ -121,7 +146,6 @@ impl TOMLParser {
         } else {
             panic!("TOMLSeg should never be empty in TOMLParser::parse_value.");
         }
-
         let count = seg.count();
         context = ParserLine::freeze(context, count);
         match ch.as_str() {
@@ -134,17 +158,17 @@ impl TOMLParser {
         }
     }
 
-    pub fn parse_array(&mut self, mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_array(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         todo!();
     }
 
-    pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         todo!();
     }
     // == String parsing ==
 
     /// Parses TOML-style basic and multi-line quoted strings
-    pub fn parse_string(&mut self, mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_string(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // determine if the multi-string delimiter is present.
         // UNWRAP justification: a " character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
@@ -158,7 +182,7 @@ impl TOMLParser {
         self.parse_multi_string(context)
     }
 
-    fn parse_multi_string(&mut self, mut context: ParserLine) -> InnerParseResult {
+    fn parse_multi_string(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         let mut quote_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
@@ -238,7 +262,7 @@ impl TOMLParser {
         Ok((TOMLType::MultiStr(outstring), context))
     }
 
-    fn parse_basic_string(&mut self, mut context: ParserLine) -> InnerParseResult {
+    fn parse_basic_string(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // Throw away first character (delimiter)
         let mut seg = context.next_seg().unwrap();
         seg.next();
@@ -410,7 +434,7 @@ impl TOMLParser {
     /// Proceeds to the next non-whitespace character in the buffer.
     /// Moves to next line if necessary.
     /// Whitespace in *this* instance is defined as Unicode whitespace; it's a superset of TOML whitespace.
-    fn get_nonwhitespace(&mut self, mut context: ParserLine) -> Result<(char, ParserLine), String> {
+    fn get_nonwhitespace(&mut self, mut context: ParserLine) -> InnerParseResult<char> {
         // The last line may have ended if the whitespace character was a newline, so
         // the next line is obtained in that instance.
         if context.is_exhausted() {
@@ -448,7 +472,7 @@ impl TOMLParser {
     }
 
     /// Parses TOML-style basic and multi-line literal strings
-    pub fn parse_literal_string(&mut self, mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_literal_string(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // UNWRAP justification: a ' character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
         for _ in 0..3 {
@@ -461,7 +485,7 @@ impl TOMLParser {
         self.parse_multi_litstr(context)
     }
 
-    fn parse_basic_litstr(&mut self, mut context: ParserLine) -> InnerParseResult {
+    fn parse_basic_litstr(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         let mut seg = context.next_seg().unwrap();
         seg.next(); // throw away delimiter.
         let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
@@ -502,7 +526,7 @@ impl TOMLParser {
         ))
     }
 
-    fn parse_multi_litstr(&mut self, mut context: ParserLine) -> InnerParseResult {
+    fn parse_multi_litstr(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
         let mut apostrophe_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
@@ -558,7 +582,7 @@ impl TOMLParser {
 
     /// Parse the input into either an integer, a float, or a date.
     /// We don't necessarily care which.
-    pub fn parse_numeric(context: ParserLine) -> InnerParseResult {
+    pub fn parse_numeric(context: ParserLine) -> InnerParseResult<TOMLType> {
         // Append the error messages since we would lose them on each subsequent parsing
         // function call..
         let mut err_msg = String::new();
@@ -594,10 +618,11 @@ impl TOMLParser {
     // == Integer parsing ==
     // This function doesn't need to take a mutable reference because there is no reason to
     // modify the structure. Is that the correct thing to do?
-    pub fn parse_integer(mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_integer(mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // Assume we know some character data exists.
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
+        seg.peek();
         seg.skip_ws();
         let mut is_negative = false;
         let mut plus_found = false;
@@ -678,7 +703,7 @@ impl TOMLParser {
         Ok((TOMLType::Int(output), context))
     }
 
-    fn dec_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+    fn dec_parse(mut context: ParserLine) -> InnerParseResult<i64> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut found_underscore = false;
@@ -759,7 +784,7 @@ impl TOMLParser {
     // REFACTOR POT.: I could remove the three nondec functions and instead have three different const arrays of valid
     // digit &strs. The mode would then determine which array to use and which scale factor to use (16, 8, or 2). The
     // overall logic is the same for all three inner fynctions.
-    fn nondec_parse(mode: String, mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+    fn nondec_parse(mode: String, mut context: ParserLine) -> InnerParseResult<i64> {
         // NOTE: Consider changing mode's type to char.
         let mut seg = context.peek().unwrap();
         // preliminary check to see if the next value is some numeric.
@@ -778,7 +803,7 @@ impl TOMLParser {
     }
 
     /// Parses the input hexadecimal into a decimal value.
-    fn hex_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+    fn hex_parse(mut context: ParserLine) -> InnerParseResult<i64> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut found_underscore = false;
@@ -830,7 +855,7 @@ impl TOMLParser {
         Ok((output, ParserLine::freeze(context, count)))
     }
 
-    fn oct_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+    fn oct_parse(mut context: ParserLine) -> InnerParseResult<i64> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut found_underscore = false;
@@ -882,7 +907,7 @@ impl TOMLParser {
         Ok((output, ParserLine::freeze(context, count)))
     }
 
-    fn bin_parse(mut context: ParserLine) -> Result<(i64, ParserLine), String> {
+    fn bin_parse(mut context: ParserLine) -> InnerParseResult<i64> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         let mut found_underscore = false;
@@ -935,7 +960,7 @@ impl TOMLParser {
     }
 
     /// Parses TOML-valid float into f64
-    pub fn parse_float(mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_float(mut context: ParserLine) -> InnerParseResult<TOMLType> {
         // Assume a non-empty context.
 
         let is_keepable = |x: &&str| {
@@ -975,7 +1000,7 @@ impl TOMLParser {
     }
 
     // == DateTime Parsing ==
-    pub fn parse_date(mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_date(mut context: ParserLine) -> InnerParseResult<TOMLType> {
         let mut seg = context.next_seg().unwrap();
         let test_str = seg.content().trim();
         match try_naive_dtparse(test_str) {
@@ -988,7 +1013,7 @@ impl TOMLParser {
     }
 
     // == Boolean Parsing ==
-    pub fn parse_bool(mut context: ParserLine) -> InnerParseResult {
+    pub fn parse_bool(mut context: ParserLine) -> InnerParseResult<TOMLType> {
         let output: Option<bool>;
         let mut seg = context.next_seg().unwrap();
 
@@ -1014,7 +1039,7 @@ impl TOMLParser {
     pub fn parse_key(
         &mut self,
         mut context: ParserLine,
-    ) -> Result<(TPath<'static>, ParserLine), String> {
+    ) -> InnerParseResult<TPath<'static>> {
         // Assume we begin at some whitespace.
         // Also assume the key itself is a dotted key since it is the most general form.
 

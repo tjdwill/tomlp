@@ -7,7 +7,7 @@ This is a journal for the purpose of tracking the progress for the TOML parser I
 Here is a living list of questions I have about the design:
 
 - Q: How am I going to track the table keys already found? Can I create a nested structure that's accessible via the TOML-specified *dot-delimited* keys?
-
+    - A: I am well past this point, but I created a type that represents TOML dotted keys and store those in a vector. Only keys used for table headers are stored.
 - Q: How am I going to parse tokens that require lookahead (i.e. array of tables' `[[` and `]]` delimiters)
     - A: I do this using the `Peekable` struct.
 - Q: How am I going to find comments at the end of values?
@@ -22,6 +22,10 @@ Here is a living list of questions I have about the design:
 - Added a function to parse the numeric types (int, float, and date). Since there is no direct way of determining which value is present, we have to try all three functions until a match is found (or throw an error otherwise).
 - Added test for `parse_numeric`
 - Wrote a prototype function for parsing values. Added test, but will need to add on to it once arrays and inline tables are implemented.
+
+### UPDATE
+
+I just fixed a nasty bug. Bascially, because I was being lazy when I wrote the implementation for `ParserLine`, I appended the number of *bytes* in the line to the vector containing the *segment_delimiters*. The last value of this vector should have been the number of *graphemes*. Inserting the number of bytes instead affected the calculation for getting the next `TOMLSeg` after a `ParserLine::freeze` operation. In any case, I fixed it, and now key-value parsing works.
 
 ## 21 August 2024
 
