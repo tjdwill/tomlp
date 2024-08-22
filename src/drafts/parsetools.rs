@@ -62,7 +62,7 @@ impl<'a> Default for TOMLSeg<'a> {
     }
 }
 
-/// A type for maintaining the parser's state.
+/// A type for maintaining the parser's state on a given line.
 #[derive(Debug, Clone)]
 pub struct ParserLine {
     data: String,    // the current line

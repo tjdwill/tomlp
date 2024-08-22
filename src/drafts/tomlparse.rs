@@ -4,7 +4,9 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
-use crate::drafts::constants::{COMMENT_TOKEN, KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN};
+use crate::drafts::constants::{
+    COMMENT_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN,
+};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
 // my imports
@@ -13,7 +15,8 @@ use super::parsetools::{ParserLine, TOMLSeg, TPath};
 pub use super::tokens::{TOMLTable, TOMLType};
 
 static EOF_ERROR: &str = "End of File during parsing operation.";
-
+type InnerParseResult = Result<(TOMLType, ParserLine), String>;  // return type alias to ensure
+                                                                 // internal consistency
 #[derive(Debug)]
 pub struct TOMLParser {
     buffer: String,          // Contains a given line.
@@ -66,6 +69,9 @@ impl TOMLParser {
         }
     }
 
+    pub fn line_num(&self) -> usize {
+        self.line_num
+    }
     /// returns false -> EoF
     /// Won't check for EoF mid-value parsing.
     /// I only plan to check in the outer loop.
@@ -100,13 +106,45 @@ impl TOMLParser {
     // Parsing Functions
     ////////////////////
 
+    /// Parse the input into a valid TOML type.
+    pub fn parse_value(&mut self, mut context: ParserLine) -> InnerParseResult {
+        // Assume we begin on whitespace
+        let mut seg = match context.next_seg() {
+            Some(next) => next,
+            None => return Err(EOF_ERROR.to_string()),
+        };
+        seg.skip_ws();
+
+        let ch: String;
+        if let Some(&c) = seg.peek() {
+            ch = c.to_string();
+        } else {
+            panic!("TOMLSeg should never be empty in TOMLParser::parse_value.");
+        }
+
+        let count = seg.count();
+        context = ParserLine::freeze(context, count);
+        match ch.as_str() {
+            TABLE_OPEN_TOKEN => self.parse_array(context),
+            LITERAL_STR_TOKEN => self.parse_literal_string(context),
+            STR_TOKEN => self.parse_string(context),
+            "t" | "f" => Self::parse_bool(context),
+            INLINETAB_OPEN_TOKEN => self.parse_inline_table(context),
+            _ => Self::parse_numeric(context),
+        }
+    }
+
+    pub fn parse_array(&mut self, mut context: ParserLine) -> InnerParseResult {
+        todo!();
+    }
+
+    pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult {
+        todo!();
+    }
     // == String parsing ==
 
     /// Parses TOML-style basic and multi-line quoted strings
-    pub fn parse_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    pub fn parse_string(&mut self, mut context: ParserLine) -> InnerParseResult {
         // determine if the multi-string delimiter is present.
         // UNWRAP justification: a " character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
@@ -120,10 +158,7 @@ impl TOMLParser {
         self.parse_multi_string(context)
     }
 
-    fn parse_multi_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    fn parse_multi_string(&mut self, mut context: ParserLine) -> InnerParseResult {
         let mut quote_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
@@ -203,10 +238,7 @@ impl TOMLParser {
         Ok((TOMLType::MultiStr(outstring), context))
     }
 
-    fn parse_basic_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    fn parse_basic_string(&mut self, mut context: ParserLine) -> InnerParseResult {
         // Throw away first character (delimiter)
         let mut seg = context.next_seg().unwrap();
         seg.next();
@@ -416,10 +448,7 @@ impl TOMLParser {
     }
 
     /// Parses TOML-style basic and multi-line literal strings
-    pub fn parse_literal_string(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    pub fn parse_literal_string(&mut self, mut context: ParserLine) -> InnerParseResult {
         // UNWRAP justification: a ' character was found before calling this function, so we know the segment exists.
         let mut seg = context.peek().unwrap();
         for _ in 0..3 {
@@ -432,10 +461,7 @@ impl TOMLParser {
         self.parse_multi_litstr(context)
     }
 
-    fn parse_basic_litstr(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    fn parse_basic_litstr(&mut self, mut context: ParserLine) -> InnerParseResult {
         let mut seg = context.next_seg().unwrap();
         seg.next(); // throw away delimiter.
         let mut grapheme_pool = String::with_capacity(self.buffer.capacity());
@@ -476,10 +502,7 @@ impl TOMLParser {
         ))
     }
 
-    fn parse_multi_litstr(
-        &mut self,
-        mut context: ParserLine,
-    ) -> Result<(TOMLType, ParserLine), String> {
+    fn parse_multi_litstr(&mut self, mut context: ParserLine) -> InnerParseResult {
         let mut apostrophe_count = 0;
         let sz = self.buffer.capacity();
         let mut grapheme_pool = String::with_capacity(sz);
@@ -533,10 +556,45 @@ impl TOMLParser {
         Ok((TOMLType::MultiLitStr(outstring), context))
     }
 
+    /// Parse the input into either an integer, a float, or a date.
+    /// We don't necessarily care which.
+    pub fn parse_numeric(context: ParserLine) -> InnerParseResult {
+        // Append the error messages since we would lose them on each subsequent parsing
+        // function call..
+        let mut err_msg = String::new();
+        match Self::parse_integer(context.clone()) {
+            Ok(out) => Ok(out),
+
+            Err(int_msg) => {
+                err_msg.push_str(int_msg.as_str());
+                err_msg.push('\n');
+                match Self::parse_float(context.clone()) {
+                    Ok(out) => Ok(out),
+
+                    Err(float_msg) => {
+                        err_msg.push_str(float_msg.as_str());
+                        err_msg.push('\n');
+                        match Self::parse_date(context.clone()) {
+                            Ok(out) => Ok(out),
+
+                            Err(date_msg) => {
+                                println!(
+                                    "Numeric Parsing Error printout:\n{}",
+                                    err_msg + date_msg.as_str()
+                                );
+                                Err(format!("Line {}: Could not parse numeric type. Tried integer, float, and date parsing.", context.line_num()))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // == Integer parsing ==
     // This function doesn't need to take a mutable reference because there is no reason to
     // modify the structure. Is that the correct thing to do?
-    pub fn parse_integer(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+    pub fn parse_integer(mut context: ParserLine) -> InnerParseResult {
         // Assume we know some character data exists.
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
@@ -603,7 +661,7 @@ impl TOMLParser {
                     }
                     _ => {
                         return Err(format!(
-                            "Line {}: Invalid integer starting character {}.",
+                            "Line {}: Invalid integer starting character '{}'.",
                             line_num, ch
                         ))
                     }
@@ -877,7 +935,7 @@ impl TOMLParser {
     }
 
     /// Parses TOML-valid float into f64
-    pub fn parse_float(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+    pub fn parse_float(mut context: ParserLine) -> InnerParseResult {
         // Assume a non-empty context.
 
         let is_keepable = |x: &&str| {
@@ -916,7 +974,21 @@ impl TOMLParser {
         }
     }
 
-    pub fn parse_bool(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
+    // == DateTime Parsing ==
+    pub fn parse_date(mut context: ParserLine) -> InnerParseResult {
+        let mut seg = context.next_seg().unwrap();
+        let test_str = seg.content().trim();
+        match try_naive_dtparse(test_str) {
+            Some(date) => Ok((date, ParserLine::freeze(context, 0))),
+            None => Err(format!(
+                "Line {}: Could not parse a datetime",
+                context.line_num()
+            )),
+        }
+    }
+
+    // == Boolean Parsing ==
+    pub fn parse_bool(mut context: ParserLine) -> InnerParseResult {
         let output: Option<bool>;
         let mut seg = context.next_seg().unwrap();
 
@@ -935,20 +1007,6 @@ impl TOMLParser {
             )),
         }
     }
-
-    // == DateTime Parsing ==
-    pub fn parse_date(mut context: ParserLine) -> Result<(TOMLType, ParserLine), String> {
-        let mut seg = context.next_seg().unwrap();
-        let test_str = seg.content().trim();
-        match try_naive_dtparse(test_str) {
-            Some(date) => Ok((date, ParserLine::freeze(context, 0))),
-            None => Err(format!(
-                "Line {}: Could not parse a datetime",
-                context.line_num()
-            )),
-        }
-    }
-
     // == Key processing ==
     /// Given an identified key location, parse the key sequence. Should handle
     /// base keys, quoted keys, and dotted keys. Only concerned with producing the

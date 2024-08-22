@@ -17,47 +17,18 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 22 August 2024
+
+- Added a function to parse the numeric types (int, float, and date). Since there is no direct way of determining which value is present, we have to try all three functions until a match is found (or throw an error otherwise).
+- Added test for `parse_numeric`
+- Wrote a prototype function for parsing values. Added test, but will need to add on to it once arrays and inline tables are implemented.
+
 ## 21 August 2024
 
 Today, I want to take stock of the current parsing functions to ensure I know what is happening in each one. Meaning, 
 
 - What assumption(s) do I make about the parsing context upon entering a given function?
 - What information is returned?
-
-### Context Assumptions
-
-When calling function \_, I assume that we begin:
-
-| Parsing Function              | Context                                                           | 
-| ----------------              | -------                                                           |
-|  **String Functions**         |                                                                   | 
-| `parse_string`                | On the first `"`                                                  | 
-| `parse_multi_string`          | On the first `"`                                                  |
-| `parse_basic_string`          | On the first `"`                                                  |
-| `parse_multi_escape_sequence` | Immediately *after* the backslash                                 |
-| `parse_basic_escape_sequence` | Immediately *after* the backslash                                 |
-| `get_nonwhitespace`           | Either on whitespace character OR on exhausted ParserLine         |
-| `escape_utf8`                 | Immediately after the `u` in an escaped `\u` sequence             |
-| `parse_literal_string`        | On the first `'`                                                  | 
-| `parse_multi_string`          | On the first `'`                                                  |
-| `parse_basic_litstr`          | On the first `'`                                                  |
-| **Integer Parsing**           |                                                                   |
-| `parse_integer`               |  Assume we start on whitespace or directly on a valid character   |
-| `dec_parse`                   | On a digit from 1..=9 (but not 0)                                 |
-| `nondec_parse`                | On some digit from 0..=F                                          |
-| `hex_parse`                   | On some digit from 0..=F                                          | 
-| `oct_parse`                   | On some digit from 0..=7                                          |
-| `bin_parse`                   | On some digit from 0..=1                                          |
-| **Float Parsing**             |                                                                   |
-| `parse_float`                 | Whitespace or on valid float character                            |
-| **Boolean Parsing**           |                                                                   |
-| `parse_bool`                  | On whitespace or on character.                                    |
-| **Date Parsing**              |                                                                   |
-| `parse_date`                  | On whitespace or on character.                                    |
-| **Table/Key Parsing**         |                                                                   |
-| `parse_key`                   | On whitespace or on character.                                    |
-| `parse_table_header`          | On `[`                                                            |
-| `parse_aot_header`            | On Whitespace or valid key character                              |
 
 ### To-Do
 
@@ -586,4 +557,45 @@ Here are a few design questions
 
 I learned the basics of ABNF by reading [RFC 5234](https://www.rfc-editor.org/rfc/rfc5234). It's so short that it's worth just reading instead of summarizing it here.
 
+
+---
+
+## Parsing Context Assumptions
+
+When calling function X, I assume that we begin:
+
+| Parsing Function              | Context                                                           | 
+| ----------------              | -------                                                           |
+| **Value Parsing**             | On Whitespace or valid value character                            |
+| **String Functions**          |                                                                   | 
+| `parse_string`                | On the first `"`                                                  | 
+| `parse_multi_string`          | On the first `"`                                                  |
+| `parse_basic_string`          | On the first `"`                                                  |
+| `parse_multi_escape_sequence` | Immediately *after* the backslash                                 |
+| `parse_basic_escape_sequence` | Immediately *after* the backslash                                 |
+| `get_nonwhitespace`           | Either on whitespace character OR on exhausted ParserLine         |
+| `escape_utf8`                 | Immediately after the `u` in an escaped `\u` sequence             |
+| `parse_literal_string`        | On the first `'`                                                  | 
+| `parse_multi_string`          | On the first `'`                                                  |
+| `parse_basic_litstr`          | On the first `'`                                                  |
+| **Integer Parsing**           |                                                                   |
+| `parse_integer`               | Assume we start on whitespace or directly on a valid character    |
+| `dec_parse`                   | On a digit from 1..=9 (but not 0)                                 |
+| `nondec_parse`                | On some digit from 0..=F                                          |
+| `hex_parse`                   | On some digit from 0..=F                                          | 
+| `oct_parse`                   | On some digit from 0..=7                                          |
+| `bin_parse`                   | On some digit from 0..=1                                          |
+| **Float Parsing**             |                                                                   |
+| `parse_float`                 | Whitespace or on valid float character                            |
+| **Boolean Parsing**           |                                                                   |
+| `parse_bool`                  | On whitespace or on character.                                    |
+| **Date Parsing**              |                                                                   |
+| `parse_date`                  | On whitespace or on character.                                    |
+| **Array Parsing**             |                                                                   |
+| `parse_array`                 | On `[`                                                            |
+| **Table/Key Parsing**         |                                                                   |
+| `parse_key`                   | On whitespace or on character.                                    |
+| `parse_table_header`          | On `[`                                                            |
+| `parse_aot_header`            | On Whitespace or valid key character                              |
+| `parse_inline_table`          | On `{`                                                            |
 

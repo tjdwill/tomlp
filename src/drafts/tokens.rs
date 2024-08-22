@@ -1,4 +1,5 @@
-////////// Imports
+//////////
+// Imports
 //////////
 
 use chrono::{offset::FixedOffset, DateTime, NaiveDate, NaiveDateTime, NaiveTime};
@@ -7,12 +8,6 @@ use std::collections::HashMap;
 /////////////////
 // Implementation
 /////////////////
-
-/*
-fn parse(file_path: &str) -> Result<HashMap<String, TOMLType>, String> {
-    Ok(HashMap::new())
-}
-*/
 
 pub type TOMLTable = HashMap<String, TOMLType>;
 
