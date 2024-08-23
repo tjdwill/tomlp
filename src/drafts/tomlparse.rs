@@ -5,7 +5,7 @@ use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
 use crate::drafts::constants::{
-    COMMENT_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN,
+    COMMENT_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, SEQUENCE_DELIM, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN
 };
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
@@ -159,7 +159,51 @@ impl TOMLParser {
     }
 
     pub fn parse_array(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
-        todo!();
+        // Assume: Beginning on `[` character.
+        let mut seg = context.next_seg().unwrap();
+        // throw away the `[`
+        seg.next();
+        // get to the first inner character
+        let count = seg.count();
+        let (_, mut context) = self.seek_nonws(ParserLine::freeze(context, count))?;
+        seg = context.next_seg().unwrap();
+        
+        // begin parsing
+        let mut array: Vec<TOMLType> = Vec::new();
+        loop {
+            if let Some(&ch) = seg.peek() {
+                match ch {
+                    TABLE_CLOSE_TOKEN => {
+                        seg.next();
+                        break;
+                    }
+                    
+                    SEQUENCE_DELIM => return Err(format!("Line {}: Array Parsing Error: The Value Separator (comma) must immediately follow a value.", context.line_num())),
+
+                    _ => {
+                        let count = seg.count();
+                        let (val, pline) = self.parse_value(ParserLine::freeze(context, count))?;
+                        array.push(val); 
+
+                        // check for comma immediately following value
+                        context = pline;
+                        seg = context.next_seg().expect("There should still be data after a value was parsed within an array.");
+                        if let Some(&SEQUENCE_DELIM) = seg.peek() {
+                            seg.next();
+                        }
+
+                        // process comment, whitespace, and newline
+                        let count = seg.count();
+                        let (_, pline) = self.seek_nonws(ParserLine::freeze(context, count))?;
+                        context = pline;
+                        seg = context.next_seg().unwrap();
+                    }
+                }
+            }
+        }
+
+        let count = seg.count();
+        Ok((TOMLType::Array(array), ParserLine::freeze(context, count)))
     }
 
     pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
@@ -1407,6 +1451,41 @@ impl TOMLParser {
     }
 
     // === Comment Parsing ===
+    #[inline]
+    fn process_comment(mut context: ParserLine,) -> InnerParseResult<()> {
+        // assume beginning immediately after `#`
+        let line_num = context.line_num();
+        let mut seg = {
+            match context.next_seg() {
+                Some(next) => next,
+                None => panic!("Comment parse context should never be entered with an empty line segment."),
+            }
+        };
+        
+        loop {
+            match seg.next() {
+                // drop the newline
+                Some("\n") => {}
+                Some(ch) => {
+                    if !is_valid_comment_grapheme(ch) {
+                        return Err(format!(
+                            "Invalid Comment Character: '{}' on Line {}",
+                            ch, line_num
+                        ));
+                    }
+                }
+                None => {
+                    if let Some(next_iter) = context.next_seg() {
+                        seg = next_iter;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(((), context))
+    }
     /// Processes the end of the given line
     fn process_eol(mut context: ParserLine) -> Result<(), String> {
         let line_num = context.line_num();
@@ -1416,27 +1495,9 @@ impl TOMLParser {
         match iter.next() {
             Some("\n") => {}
             Some(COMMENT_TOKEN) => {
-                loop {
-                    match iter.next() {
-                        // drop the newline
-                        Some("\n") => {}
-                        Some(ch) => {
-                            if !is_valid_comment_grapheme(ch) {
-                                return Err(format!(
-                                    "Invalid Comment Character: {} on Line {}",
-                                    ch, line_num
-                                ));
-                            }
-                        }
-                        None => {
-                            if let Some(next_iter) = context.next_seg() {
-                                iter = next_iter;
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
+               let count = iter.count();
+               let(_, pline) = Self::process_comment(ParserLine::freeze(context, count))?;
+               context = pline;
             }
             Some(ch) => {
                 let ch = ch.to_string();
@@ -1454,6 +1515,58 @@ impl TOMLParser {
         }
         assert!(context.is_exhausted());
         Ok(())
+    }
+
+    /// Handles whitespace, comments, and blank lines until a 
+    /// non-whitespace/non-comment character is found
+    fn seek_nonws(&mut self, mut context: ParserLine) -> InnerParseResult<()> {
+        /* 
+         * I can't make any assumption about the state of a given ParserLine when this function is
+         *  called. We could be:
+         *   - At the end of a line
+         *   - At the end of the *file*
+         *   - On whitespace
+         *   - On non-ws
+        */ 
+
+        // Initial State
+        let mut seg = {
+            match context.next_seg() {
+                Some(next) => next,
+                None => {
+                   context = self.next_parserline()?;
+                   context.next_seg().unwrap()
+                }
+            }
+        }; // Now here, we are guaranteed to have some valid segment.
+        
+        loop {
+            // Parse until we find a non-whitespace character that is
+            // neither a comment delimiter nor a newline character
+            seg.skip_ws();
+            if let Some(&ch) = seg.peek() {
+                match ch {
+                   "\n" => {seg.next();}
+                   COMMENT_TOKEN => {
+                       seg.next();
+                       let count = seg.count();
+                       let (_, pline) = Self::process_comment(ParserLine::freeze(context, count))?;
+                       return self.seek_nonws(pline);
+                   }
+                   _ => {  // found some grapheme of interest
+                     break;
+                   }
+                }
+            } else {
+                // try to get the next segment
+               return self.seek_nonws(context)
+            }
+        }
+
+        let count = seg.count();
+        Ok(
+            ((), ParserLine::freeze(context, count))
+        )
     }
 }
 
