@@ -1,0 +1,8 @@
+{ first = "Tom", last = "Preston-Werner"  }
+{ type.name = "pug" }
+{ x = 1, y = 2 }
+{ x = {}, y = """
+
+Multiline Value \
+""", z=[]}
+{nested = [{}, [[[]]], {1 = { 2 = { }}}]}

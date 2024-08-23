@@ -5,7 +5,7 @@ use std::io::{prelude::*, BufReader};
 use std::path::Path;
 // third-party imports
 use crate::drafts::constants::{
-    COMMENT_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, SEQUENCE_DELIM, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN
+    COMMENT_TOKEN, INLINETAB_CLOSE_TOKEN, INLINETAB_OPEN_TOKEN, KEY_VAL_SEP, SEQUENCE_DELIM, TABLE_CLOSE_TOKEN, TABLE_OPEN_TOKEN
 };
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
 use unicode_segmentation::UnicodeSegmentation;
@@ -206,9 +206,6 @@ impl TOMLParser {
         Ok((TOMLType::Array(array), ParserLine::freeze(context, count)))
     }
 
-    pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
-        todo!();
-    }
     // == String parsing ==
 
     /// Parses TOML-style basic and multi-line quoted strings
@@ -1076,6 +1073,66 @@ impl TOMLParser {
             )),
         }
     }
+    // == Table Parsing == 
+    pub fn parse_inline_table(&mut self, mut context: ParserLine) -> InnerParseResult<TOMLType> {
+        let mut table = TOMLTable::new();
+        // Assume we begin on `{`
+        let mut seg = context.next_seg().unwrap();
+        // Throw away delimiter
+        seg.next();
+        let mut trailing_comma = false;
+        loop {
+            seg.skip_ws();
+            if let Some(&ch) = seg.peek() {
+                match ch {
+                    SEQUENCE_DELIM => return Err(format!("Line {}: Inline Table Parsing Error: The value separator (comma) must immediately follow a value.", context.line_num())),
+
+                    "\n" => return Err(format!("Line {}: Newlines are prohibited within an inline table (outside of a value that allows them)", context.line_num())),
+                    
+                    INLINETAB_CLOSE_TOKEN => {
+                        seg.next();
+                        break;
+                    }
+                    
+                    _ => {
+                        let count = seg.count();
+                        let (key_val, pline) = self.parse_keyval(ParserLine::freeze(context, count))?;
+                        trailing_comma = false;
+                        context = pline;
+                        seg = context.next_seg().expect("Inline Table should never terminate prematurely.");
+                        if let Err(msg) = Self::insert(key_val, &mut table) {
+                            return Err(format!("Line {}: {}", context.line_num(), msg))
+                        }
+
+                        // check for comma
+                        if let Some(&SEQUENCE_DELIM) = seg.peek() {
+                            seg.next();
+                            trailing_comma = true;
+                        }
+                        
+                    }
+
+                }
+            } else {
+                // get next segment
+                seg = match context.next_seg() {
+                    Some(next) => next,
+                    None => return Err(EOF_ERROR.to_string())
+                };
+            }
+        }
+        if trailing_comma {
+            return Err(format!("Line {}: Trailing comma prohibited in inline tables.", context.line_num()));
+        } else {
+            let count = seg.count();
+            Ok((TOMLType::InlineTable(table), ParserLine::freeze(context, count)))
+        }
+    }
+
+    pub fn insert(kv: KeyVal, table_head: &mut TOMLTable) -> Result<(), String> {
+        insert_keyval(kv, table_head)
+    }
+
     // == Key processing ==
     /// Given an identified key location, parse the key sequence. Should handle
     /// base keys, quoted keys, and dotted keys. Only concerned with producing the
@@ -1573,6 +1630,58 @@ impl TOMLParser {
 ///////////////////
 // Helper Functions
 ///////////////////
+
+// Table Traversal
+
+/// Given a mutable table reference, insert the provided key-value pair into the 
+/// structure, defining super tables as needed.
+/// Supertables are typed as dotted key tables (TOMLType::DKTable). This is the case
+/// whether the dotted key is within an inline table or a higher-level structure.
+fn insert_keyval(kv: KeyVal<'_>, table_head: &mut TOMLTable) -> Result<(), String> {
+    let KeyVal(key_path, val) = kv;
+    let mut key_iter = key_path.into_iter().peekable();
+    let mut keyseg: &str;
+    let mut curr_table = table_head;
+    let mut partial_key: String = String::new();  // tracks the key segments that have been
+                                                  // considered
+    // Iterate through the preceding key segments,
+    // creating DKTables as needed, and updating the table
+    // pointer.
+    loop {
+        keyseg = key_iter.next().unwrap();
+        if let None = key_iter.peek() {
+            break;
+        }
+        partial_key.push_str(keyseg);
+        partial_key.push('|');
+        let key = keyseg.to_string();
+        if curr_table.contains_key(&key) {
+            if let TOMLType::DKTable(ref mut dktable) = curr_table.get_mut(&key).unwrap() {
+                curr_table = dktable;
+            } else {
+                return Err(format!("Key `{}` is already defined at this table level.", partial_key))
+            }
+        } else {
+            // create a dotted key table
+            curr_table.insert(key.clone(), TOMLType::DKTable(TOMLTable::new()));
+            // update curr_table
+            match curr_table.get_mut(&key).unwrap() {
+                TOMLType::DKTable(ref mut dktable) => curr_table = dktable,
+                _ => panic!("`insert_keyval` should never reach this point. The table was just defined.")
+                
+            }
+        }
+    }
+    // insert the value
+    partial_key.push_str(keyseg);
+    let key = keyseg.to_string();
+    if curr_table.contains_key(&key) {
+        return Err(format!("Key `{}` is already defined at this table level.", partial_key))
+    } else {
+        curr_table.insert(key, val); 
+        Ok(())
+    }
+}
 
 // Dates
 

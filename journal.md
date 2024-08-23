@@ -17,6 +17,13 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 23 August 2024
+
+Great progress so far today. I've implemented and tested array parsing (including basic nested arrays).
+
+- Wrote a function to make key-val insertion relatively easy. Tested.
+- Implemented Inline Table parsing!
+
 ## 22 August 2024
 
 - Added a function to parse the numeric types (int, float, and date). Since there is no direct way of determining which value is present, we have to try all three functions until a match is found (or throw an error otherwise).
