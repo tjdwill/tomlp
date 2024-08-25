@@ -63,7 +63,7 @@ impl<'a> Default for TOMLSeg<'a> {
 }
 
 /// A type for maintaining the parser's state on a given line.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ParserLine {
     data: String,    // the current line
     line_num: usize, // line's file location
@@ -235,7 +235,7 @@ impl ParserLine {
         let mut grapheme_count = 0;
         while let Some((byte_num, ch)) = iter.next() {
             match ch {
-                COMMENT_TOKEN => {
+                COMMENT_TOKEN | INLINETAB_CLOSE_TOKEN | TABLE_CLOSE_TOKEN => {
                     byte_nums.push(byte_num);
                     seg_nums.push(grapheme_count);
                 }

@@ -22,11 +22,11 @@ pub struct KeyVal<'a>(pub TPath<'a>, pub TOMLType);
 
 #[derive(Debug)]
 pub struct TOMLParser {
-    buffer: String,          // Contains a given line.
-    reader: BufReader<File>, // TOML File reader construct
+    buffer: String,                     // Contains a given line.
+    reader: BufReader<File>,            // TOML File reader construct
     line_num: usize,
-    table_heads: Vec<TPath<'static>>, // Contains all top-level keys of form `[key]`
-    main_table: TOMLTable,            // The overall TOMLTable
+    table_heads: Vec<TPath<'static>>,   // Contains all top-level keys of form `[key]`
+    eof_flag: bool,                     
 }
 impl TOMLParser {
     // DEV Note: I think most functions will have to be made public for testing purposes.
@@ -42,12 +42,8 @@ impl TOMLParser {
             reader: BufReader::new(fd),
             line_num: 0,
             table_heads: Vec::new(),
-            main_table: TOMLTable::new(),
+            eof_flag: false,
         })
-    }
-
-    pub fn view_table(&self) -> &TOMLTable {
-        &self.main_table
     }
 
     fn validate_file(input: &str) -> Result<File, String> {
@@ -108,6 +104,52 @@ impl TOMLParser {
     ////////////////////
     // Parsing Functions
     ////////////////////
+
+    pub fn parse_toml(&mut self) -> Result<TOMLTable, String> {
+        let mut table = TOMLTable::new();
+        let mut curr_table = &mut table;
+        loop {
+            let context = match self.fill_table(curr_table) {
+                Ok((_, pline)) => pline, 
+                Err(msg) => {
+                    if self.eof_flag {
+                        break;
+                    } else {
+                        return Err(msg)
+                    }
+                }
+            };
+            // the received ParserLine is set to be positioned on `[`.
+            curr_table = self.parse_table_header(context, &mut table)?; 
+        }
+        Ok(table)
+    }
+
+    fn fill_table(&mut self, table_head: &mut TOMLTable) -> InnerParseResult<()> {
+        // start with a fresh ParserLine?
+        let mut context = {
+            if self.line_num == 0 {
+                ParserLine::default()
+            } else{
+                self.next_parserline()?
+            }
+        };
+        // Parse key_value pairs until the EoF or until the next table is reached.
+        loop {
+            let (_, pline) = self.seek_nonws(context)?;
+
+            // If we return successfully from `seek_nonws`, we know there's a valid segment.
+            let mut seg = pline.peek().unwrap();
+            if let Some(&TABLE_OPEN_TOKEN) = seg.peek() {
+                return Ok(((), pline))
+            } else { 
+                // find the key value pair and insert into the current table
+                let (kv, next_context) = self.parse_keyval(pline)?;
+                Self::insert(kv, table_head)?;
+                context = next_context;
+            }
+        }
+    }
 
     pub fn parse_keyval(&mut self, mut context: ParserLine) -> InnerParseResult<KeyVal> {
         // Assume we begin on non-whitespace
@@ -1259,10 +1301,11 @@ impl TOMLParser {
     /// Parses dotted key, performs validation, and descends the table beginning
     /// from the top-level, creating super-tables as necessary.
     /// Returns a mutable reference to the deepest table referred to by the (dotted) key
-    pub fn parse_table_header(
+    pub fn parse_table_header<'a>(
         &mut self,
         mut context: ParserLine,
-    ) -> Result<&mut TOMLTable, String> {
+        top_level_table: &'a mut TOMLTable,
+    ) -> Result<&'a mut TOMLTable, String> {
         let line_num = context.line_num();
         let mut seg = context.next_seg().unwrap();
         // skip the first '['
@@ -1274,7 +1317,7 @@ impl TOMLParser {
             // form (as in, we know it's not an AoT?)
             seg.next();
             let count = seg.count();
-            return self.parse_aot_header(ParserLine::freeze(context, count));
+            return self.parse_aot_header(ParserLine::freeze(context, count), top_level_table)
         }
 
         let count = seg.count();
@@ -1320,7 +1363,7 @@ impl TOMLParser {
         // Iterate through the entire key path, polling the table structure beginning from the top-level.
         // Make the iterator peekable to determine when we are on the last path segment.
         let mut path_iter = path.into_iter().peekable();
-        let mut curr_table: &mut TOMLTable = &mut self.main_table;
+        let mut curr_table: &mut TOMLTable = top_level_table;
         let mut pure_key_sequence = true; // do all key segments point to an HTable?
         let mut pathseg;
         loop {
@@ -1415,10 +1458,11 @@ impl TOMLParser {
         Ok(curr_table)
     }
 
-    fn parse_aot_header(&mut self, context: ParserLine) -> Result<&mut TOMLTable, String> {
+    fn parse_aot_header<'a>(&mut self, context: ParserLine, top_level_table: &'a mut TOMLTable,) -> Result<&'a mut TOMLTable, String> {
         // assume we are *within* the square bracket delimiters already.
         let (path, mut context) = self.parse_key(context)?;
         let line_num = context.line_num();
+        let err_msg = format!("Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`", line_num, TABLE_CLOSE_TOKEN, TABLE_CLOSE_TOKEN);
 
         // == HANDLING the rest of the line ==
         let mut seg = context.next_seg().unwrap(); // we know the parse key function exits on either
@@ -1426,19 +1470,17 @@ impl TOMLParser {
                                                    // Handle closing delimiter
         if let Some(&TABLE_CLOSE_TOKEN) = seg.peek() {
             seg.next();
+            seg = match context.next_seg() {
+                Some(next) => next,
+                None => return Err(err_msg),
+            };
             if seg.peek() != Some(&TABLE_CLOSE_TOKEN) {
-                return Err(format!(
-                    "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
-                    line_num, TABLE_CLOSE_TOKEN, TABLE_CLOSE_TOKEN
-                ));
+                return Err(err_msg);
             } else {
                 seg.next();
             }
         } else {
-            return Err(format!(
-                "Line {}: Invalid Array of Tables Declaration; Must close with `{}{}`",
-                line_num, TABLE_CLOSE_TOKEN, TABLE_CLOSE_TOKEN
-            ));
+            return Err(err_msg);
         }
         let count = seg.count();
         Self::process_eol(ParserLine::freeze(context, count))?;
@@ -1450,7 +1492,7 @@ impl TOMLParser {
 
             In other words, in a dotted AoT key, each segment must point to an AoT if the key segment already has an associated value.
         */
-        let mut curr_table: &mut TOMLTable = &mut self.main_table;
+        let mut curr_table: &mut TOMLTable = top_level_table;
         let mut path_iter = path.into_iter().peekable();
         let mut pathseg: &str;
         loop {
@@ -1591,7 +1633,14 @@ impl TOMLParser {
             match context.next_seg() {
                 Some(next) => next,
                 None => {
-                   context = self.next_parserline()?;
+                   context = match self.next_parserline() {
+                        Ok(pline) => pline,
+                        Err(msg) => {
+                            self.eof_flag = true; // sets the termination condition of the
+                                                  // Parser
+                            return Err(msg)
+                        }
+                   };
                    context.next_seg().unwrap()
                 }
             }
