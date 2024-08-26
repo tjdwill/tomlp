@@ -2,8 +2,8 @@
 mod constants; // Characters of Interest
 mod parsedtoml; // The completely-parsed TOML table.
 mod parsetools; // Tools that make the parsing operation easier for me to think about
-mod tomlparse;
-mod tomltypes; // Rust representations of TOML types // The TOML parser
+mod tomlparse; // The TOML parser
+mod tomltypes; // Rust representations of TOML types 
 
 // Imports
 use parsedtoml::ParsedTOML;
