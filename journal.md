@@ -17,6 +17,10 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 26 August 2024
+
+I refactored the project to achieve a more private visibility across the project. Tests have been moved to a submodule of `tomlparse`. Now, I am focusing on making the project presentable: how can I show that the project works? My current plan is to create a `tree`-like function that can recursively output the keys and value type of the TOMLTable.
+
 ## 25 August 2024
 
 I finished the first version of the parser. I had to change a few things in various places for it to work properly. Most notably:

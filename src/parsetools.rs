@@ -67,9 +67,9 @@ impl<'a> Default for TOMLSeg<'a> {
 pub struct ParserLine {
     data: String,    // the current line
     line_num: usize, // line's file location
-    // iteration things
+    // Iteration Things
     seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
-    byte_nums: Vec<usize>, // a vector of byte offsets to enable segment slice construction
+    byte_nums: Vec<usize>, // a vector of byte offsets to enable slice representation of a given segment
     iter_limit: usize,    // The iteration terminal value
     curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
     remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
@@ -210,6 +210,7 @@ impl ParserLine {
     // Static Methods
     /////////////////
 
+    /* NOTE: Made redundant by the `Default` trait.
     pub fn replacement() -> Self {
         Self {
             data: String::new(),
@@ -221,6 +222,7 @@ impl ParserLine {
             remaining_graphemes: 0,
         }
     }
+    */
 
     /// Partitions the line into TOML-semantic segments.
     /// Given some
@@ -371,7 +373,7 @@ mod tests {
     fn test_continuity() {
         let mut pline = ParserLine::new("This is a test".to_string(), 0);
         let seg = pline.next_seg();
-        println!("\n{:?}", seg);
+        //println!("\n{:?}", seg);
         let mut seg = seg.unwrap();
         assert_eq!(Some("T"), seg.next());
         assert_eq!(Some(&"h"), seg.peek());
