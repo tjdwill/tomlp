@@ -16,7 +16,7 @@ I wanted to see if the parser worked on a "real" TOML file, so I used the `Cargo
 fn main() -> Result<(), String> {
     use tomlp::{parse, ValFromTOMLKey};
 
-    let result = parse("../tomlparse/test_resources/ripgrep.toml")?;
+    let result = parse("ripgrep.toml")?;
     println!("Parsed TOML Table:{}", result);
 
     // query the table.
