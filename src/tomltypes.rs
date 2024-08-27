@@ -8,8 +8,9 @@ use std::collections::HashMap;
 
 /// Retrieve a view into the value of a given key-value pair
 /// if it exists.
-/// `key_sequence`: the (potentially multi-part) key
-/// `delimiter`: the substring suded to separate key parts (equivalent to the `.` in a
+///
+/// - `key_sequence`: the (potentially multi-part) key
+/// - `delimiter`: the substring suded to separate key parts (equivalent to the `.` in a
 ///              dotted-key)
 ///
 /// Arrays and Arrays of Tables cannot be queried into because they require an index.
@@ -48,9 +49,13 @@ pub enum TOMLType {
     Int(i64),
     Float(f64),
     // Strings
+    /// Basic String
     BasicStr(String),
+    /// Multi-line string
     MultiStr(String),
+    /// Basic literal string
     LitStr(String),
+    /// Multi-line literal string
     MultiLitStr(String),
     // Dates
     Date(NaiveDate),
@@ -59,10 +64,13 @@ pub enum TOMLType {
     TimeStamp(DateTime<FixedOffset>),
     // Collections
     Array(Vec<Self>),
-    HTable(TOMLTable),      // Tables defined via table header syntax
-    DKTable(TOMLTable),     // Tables defined via dotted keys `ex. apple.color = "red"`
-    InlineTable(TOMLTable), // Needed because InlineTables are to be self-contained
-    // and non-modifiable after definition
+    /// Table defined via table header syntax `[table]`
+    HTable(TOMLTable),
+    /// Table defined via dotted key (ex. `apple.color = "red"`)
+    DKTable(TOMLTable),
+    // Needed because InlineTables are to be self-contained and non-modifiable after definition
+    InlineTable(TOMLTable), 
+    /// Array of Tables
     AoT(Vec<TOMLTable>), // Array of Tables
 }
 impl TOMLType {

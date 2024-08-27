@@ -3,9 +3,6 @@ use crate::tomltypes::{TOMLType, ValFromTOMLKey};
 
 use super::tomltypes::TOMLTable;
 /// The Rust representation of the complete read-only TOML table.
-/// It's a wrapped hash map.
-/// Goals:
-///     - [ ] Create a printable representation reminiscent to Unix's `tree`
 #[derive(Debug)]
 pub struct ParsedTOML {
     table: TOMLTable,
