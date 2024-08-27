@@ -1530,7 +1530,7 @@ impl TOMLParser {
         let seg = context.next_seg().unwrap();
         let result = seg.content().trim().replace("_", "").parse::<f64>();
         match result {
-            Ok(val) => Ok((TOMLType::Float(val), context)),
+            Ok(val) => Ok((TOMLType::Float(val), ParserLine::freeze(context, 0))),
             Err(_) => Err(format!("Line {}: Float Parsing Error.", context.line_num())),
         }
     }

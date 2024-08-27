@@ -6,6 +6,9 @@ fn main() -> Result<(), String> {
 
     // query the table.
     // Let's get an array
-    println!("\nRetrieved Value:\n{:?}", result.retrieve("package\0keywords", "\0"));
+    println!(
+        "\nRetrieved Value:\n{:?}",
+        result.retrieve("package\0keywords", "\0")
+    );
     Ok(())
 }
