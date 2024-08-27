@@ -1,14 +1,11 @@
 #![allow(unused_variables, unused_imports)]
-use crate::tomltypes::TOMLType;
+use crate::tomltypes::{TOMLType, ValFromTOMLKey};
 
-use super::parsetools::TPath;
-use super::tomlparse::TOMLParser;
 use super::tomltypes::TOMLTable;
 /// The Rust representation of the complete read-only TOML table.
 /// It's a wrapped hash map.
 /// Goals:
 ///     - [ ] Create a printable representation reminiscent to Unix's `tree`
-///     - [ ] Allow queries using TOML keys
 #[derive(Debug)]
 pub struct ParsedTOML {
     table: TOMLTable,
@@ -18,21 +15,20 @@ impl ParsedTOML {
         Self { table }
     }
 
-    /// Retrieve a view into the value of a given key-value pair
-    /// if it exists.
-    pub fn get(key: TPath<'_>) -> Option<&TOMLType> {
-        todo!();
-    }
-
     /// A function for recursively descending and printing the TOML table.
     /// Takes inspiration from the `tree` program.
     fn tree(&self) -> String {
         let mut last_key_tracker: Vec<bool> = Vec::new();
-        Self::tree_iter(&self.table, 0, "/".to_string(), &mut last_key_tracker)
+        Self::tree_iter(&self.table, 0, "\n/".to_string(), &mut last_key_tracker)
     }
-    fn tree_iter(table: &TOMLTable, level: usize, mut outstr: String, last_key_tracker: &mut Vec<bool>) -> String {
+    fn tree_iter(
+        table: &TOMLTable,
+        level: usize,
+        mut outstr: String,
+        last_key_tracker: &mut Vec<bool>,
+    ) -> String {
         /*
-         * - For the given table, iterate over all keys. 
+         * - For the given table, iterate over all keys.
          *
          */
         const TERMINATING_CONNECTOR: &str = "└── ";
@@ -66,24 +62,24 @@ impl ParsedTOML {
             // First, check for recursive table
             let toml_val = table.get(key).unwrap();
             if let TOMLType::HTable(ref htable) = toml_val {
-                outstr = Self::tree_iter(htable, level+1, outstr, last_key_tracker);
+                outstr = Self::tree_iter(htable, level + 1, outstr, last_key_tracker);
                 continue;
             } else if let TOMLType::DKTable(ref dktable) = toml_val {
-                outstr = Self::tree_iter(dktable, level+1, outstr, last_key_tracker);
+                outstr = Self::tree_iter(dktable, level + 1, outstr, last_key_tracker);
                 continue;
             } else if let TOMLType::InlineTable(ref inlinetab) = toml_val {
-                outstr = Self::tree_iter(inlinetab, level+1, outstr, last_key_tracker);
+                outstr = Self::tree_iter(inlinetab, level + 1, outstr, last_key_tracker);
                 continue;
             } else if let TOMLType::AoT(ref aot) = toml_val {
-                outstr.push_str(" (Arr_of_Tbls)"); 
+                outstr.push_str(" (Arr_of_Tbls)");
                 for table in aot.iter() {
-                    outstr = Self::tree_iter(table, level+1, outstr, last_key_tracker);
+                    outstr = Self::tree_iter(table, level + 1, outstr, last_key_tracker);
                 }
                 continue;
             }
             // If we reach here, there's a value that we're just labeling instead of expanding.
             outstr.push('\n');
-             for lv in 0..level+1 {
+            for lv in 0..level + 1 {
                 let is_last_key = *last_key_tracker.get(lv).unwrap();
                 if is_last_key {
                     outstr.push_str(" ");
@@ -106,10 +102,13 @@ impl ParsedTOML {
                 TOMLType::NaiveDateTime(dt) => outstr.push_str(dt.to_string().as_str()),
                 TOMLType::Date(dt) => outstr.push_str(dt.to_string().as_str()),
                 TOMLType::Time(dt) => outstr.push_str(dt.to_string().as_str()),
-                TOMLType::HTable(_) | TOMLType::DKTable(_) | TOMLType::InlineTable(_) | TOMLType::AoT(_) => (),
+                TOMLType::HTable(_)
+                | TOMLType::DKTable(_)
+                | TOMLType::InlineTable(_)
+                | TOMLType::AoT(_) => (),
             }
         }
-        last_key_tracker.pop();  // remove this level's boolean
+        last_key_tracker.pop(); // remove this level's boolean
         assert_eq!(last_key_tracker.len(), level);
         outstr
     }
@@ -119,4 +118,8 @@ impl std::fmt::Display for ParsedTOML {
         write!(f, "{}", self.tree())
     }
 }
-
+impl ValFromTOMLKey for ParsedTOML {
+    fn retrieve(&self, key_sequence: &str, delimiter: &str) -> Option<&TOMLType> {
+        self.table.retrieve(key_sequence, delimiter)
+    }
+}

@@ -17,6 +17,76 @@ Here is a living list of questions I have about the design:
 
 ---
 
+## 27 August 2024
+
+I was able to implement `tree` for the `ParsedTOML` struct. Given the following TOML:
+
+```toml
+           # this is a valid comment.
+[package]
+name = "tomlp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+unicode-segmentation = "~1.11.0"
+chrono = "0.4.38"
+
+[lib]
+name = "tomlp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "prototype"
+    path = "src/bin.rs"
+
+
+[[bin]]
+name = 123
+    path = "src/bin.rs"
+```
+
+Here was the output:
+```console
+/
+├── package
+│   ├── version
+│   │   └── 0.1.0
+│   ├── edition
+│   │   └── 2021
+│   └── name
+│       └── tomlp
+├── lib
+│   ├── name
+│   │   └── tomlp
+│   └── path
+│       └── src/lib.rs
+├── bin (Arr_of_Tbls)
+│   ├── path
+│   │   └── src/bin.rs
+│   └── name
+│       └── prototype
+│   ├── name
+│   │   └── 123
+│   └── path
+│       └── src/bin.rs
+└── dependencies
+    ├── unicode-segmentation
+    │   └── ~1.11.0
+    └── chrono
+        └── 0.4.38
+```
+
+Because hash maps are unordered, the order to the keys can change between printings. The structure remains correct, however. 
+
+I decided to specifically label Array of Tables because each subsequent array is slightly disconnected from the tree, which could confuse a user (who's really going to use this though?). Also, arrays are simply labeled "ARRAY" because I can't print them while also maintaining the formatting for the tree. This is especially notable for arrays that take multiple lines.
+
+One thing I realized when writing the tree function was that I had to keep track of whether a given table level was on its last key. This requirement was needed to ensure proper formatting.
+
+On another note, I also created a trait for `TOMLTable` that allows for "dotted-key" retrieval. Basically, like in a `TPath`, you provide a key string and a delimiter string. The delimiter string allows the program to segment the key string into sub-keys.
+
+With this, the parser, return type, and basic user interface are all complete. I think the project may be able to go `0.1.0`, PY!
+
 ## 26 August 2024
 
 I refactored the project to achieve a more private visibility across the project. Tests have been moved to a submodule of `tomlparse`. Now, I am focusing on making the project presentable: how can I show that the project works? My current plan is to create a `tree`-like function that can recursively output the keys and value type of the TOMLTable.

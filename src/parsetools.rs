@@ -70,8 +70,8 @@ pub struct ParserLine {
     // Iteration Things
     seg_nums: Vec<usize>, // a vector of what is essentially cursor positions to denote segment ranges.
     byte_nums: Vec<usize>, // a vector of byte offsets to enable slice representation of a given segment
-    iter_limit: usize,    // The iteration terminal value
-    curr_seg_num: usize,  // x: 0 <= x <= iter_limit;
+    iter_limit: usize,     // The iteration terminal value
+    curr_seg_num: usize,   // x: 0 <= x <= iter_limit;
     remaining_graphemes: usize, // a tracker for reproducing a given segment with some offset.
 }
 impl ParserLine {
