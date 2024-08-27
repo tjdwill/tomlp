@@ -19,7 +19,7 @@ fn main() -> Result<(), String> {
     let result = parse("ripgrep.toml")?;
     println!("Parsed TOML Table:{}", result);
 
-    // query the table.
+    // Query the table.
     // Let's get an array
     println!("\nRetrieved Value:\n{:?}", result.retrieve("package\0keywords", "\0"));
     Ok(())
