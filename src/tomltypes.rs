@@ -69,7 +69,7 @@ pub enum TOMLType {
     /// Table defined via dotted key (ex. `apple.color = "red"`)
     DKTable(TOMLTable),
     // Needed because InlineTables are to be self-contained and non-modifiable after definition
-    InlineTable(TOMLTable), 
+    InlineTable(TOMLTable),
     /// Array of Tables
     AoT(Vec<TOMLTable>), // Array of Tables
 }

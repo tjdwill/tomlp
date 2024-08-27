@@ -23,29 +23,29 @@ pub use tomltypes::{TOMLTable, TOMLType, ValFromTOMLKey};
 /// name = "tomlp"
 /// version = "0.1.0"
 /// edition = "2021"
-/// 
+///
 /// [dependencies]
 /// unicode-segmentation = "~1.11.0"
 /// chrono = "0.4.38"
-/// 
+///
 /// [lib]
 /// name = "tomlp"
 /// path = "src/lib.rs"
-/// 
+///
 /// [[bin]]
 /// name = "prototype"
 ///     path = "src/bin.rs"
-/// 
-/// 
+///
+///
 /// [[bin]]
 /// name = 123
 ///     path = "src/bin.rs"
-/// 
+///
 /// ```
-/// 
+///
 /// Parse via
 ///
-/// ``` 
+/// ```
 /// use tomlp::parse;
 /// let result = parse("test.toml")?;
 /// println!("{}", result);
