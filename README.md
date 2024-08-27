@@ -5,12 +5,12 @@ In order to gain familiarity in a new programming language as well as improve my
 This repository is the result. It includes:
 
 - A function `tomlp::parse` that parses TOML and returns a viewable table, `tomlp::ParsedTOML`.
-- `ParsedTOML` implements `std::fmt::Display`, resulting in a print out that emulates that seen by the `tree` program for file systems.
+- `ParsedTOML` implements `std::fmt::Display`, resulting in a print out that emulates the format of the `tree` program for file systems.
 - The type is a wrapper around `tomlp::TOMLTable`, an alias for a hash map. I created a trait, `tomlp::ValFromTOMLKey` that allows the user to input a multi-part key with a user-specified delimiter, subsequently querying the table and returning the result as an `Option<tomlp::TOMLType>`. 
 
 ## Example
 
-I wanted to see if the parser worked on a "real" TOML file, so I used the `Cargo.toml` from the [`ripgrep`](https://github.com/BurntSushi/ripgrep) project. Assuming the file is named `ripgrep.toml` and it is in the current working direectory:
+I wanted to see if the parser worked on a "real" TOML file, so I used the `Cargo.toml` from the [`ripgrep`](https://github.com/BurntSushi/ripgrep) project. Assuming the file is named `ripgrep.toml` and that it's in the current working direectory:
 
 ```rust
 fn main() -> Result<(), String> {
