@@ -6,8 +6,8 @@ mod tomlparse; // The TOML parser
 mod tomltypes; // Rust representations of TOML types
 
 // Imports
-use tomlparse::TOMLParser;
 pub use parsedtoml::ParsedTOML;
+use tomlparse::TOMLParser;
 pub use tomltypes::{TOMLTable, TOMLType, ValFromTOMLKey};
 
 /// The interface to the TOML parser.

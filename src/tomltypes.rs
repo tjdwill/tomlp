@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// Attempting to key into an Array of Tables or an Array will result in `None`.
 ///
 ///
-/// Ex. 
+/// Ex.
 /// ```toml
 ///  # sample.toml
 ///  [my_table]
@@ -62,7 +62,7 @@ pub enum TOMLType {
     HTable(TOMLTable),      // Tables defined via table header syntax
     DKTable(TOMLTable),     // Tables defined via dotted keys `ex. apple.color = "red"`
     InlineTable(TOMLTable), // Needed because InlineTables are to be self-contained
-                            // and non-modifiable after definition
+    // and non-modifiable after definition
     AoT(Vec<TOMLTable>), // Array of Tables
 }
 impl TOMLType {
@@ -101,7 +101,6 @@ impl TOMLType {
     }
 }
 
-
 impl ValFromTOMLKey for TOMLTable {
     fn retrieve(&self, key_sequence: &str, delimiter: &str) -> Option<&TOMLType> {
         let mut curr_table = self;
@@ -122,7 +121,9 @@ impl ValFromTOMLKey for TOMLTable {
             if let Some(val) = curr_table.get(&key) {
                 curr_val = val;
                 match curr_val {
-                    TOMLType::HTable(ref table) | TOMLType::DKTable(ref table) | TOMLType::InlineTable(ref table) => curr_table = table,
+                    TOMLType::HTable(ref table)
+                    | TOMLType::DKTable(ref table)
+                    | TOMLType::InlineTable(ref table) => curr_table = table,
                     _ => return None,
                 }
             } else {
