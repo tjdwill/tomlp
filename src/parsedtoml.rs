@@ -1,3 +1,4 @@
+#![allow(unused_variables, unused_imports)]
 use crate::tomltypes::TOMLType;
 
 use super::parsetools::TPath;
@@ -26,34 +27,38 @@ impl ParsedTOML {
     /// A function for recursively descending and printing the TOML table.
     /// Takes inspiration from the `tree` program.
     fn tree(&self) -> String {
-        Self::tree_iter(&self.table, 1, ".".to_string())
+        let mut last_key_tracker: Vec<bool> = Vec::new();
+        Self::tree_iter(&self.table, 0, "/".to_string(), &mut last_key_tracker)
     }
-    fn tree_iter(table: &TOMLTable, level: usize, mut outstr: String) -> String {
+    fn tree_iter(table: &TOMLTable, level: usize, mut outstr: String, last_key_tracker: &mut Vec<bool>) -> String {
         /*
          * - For the given table, iterate over all keys. 
          *
          */
-        if table.is_empty() {
-            return "".to_string();
-        }
-
         const TERMINATING_CONNECTOR: &str = "└── ";
         const NONTERMINATING_CONNECTOR: &str = "├── ";
         const VERTICAL_EXTENDER: &str = "│";
         const SPACING: &str = "   "; // three spaces
+
+        last_key_tracker.push(false);
 
         let mut key_iter = table.keys().peekable();
         let mut connector: &str = NONTERMINATING_CONNECTOR;
         while let Some(key) = key_iter.next() {
             if let None = key_iter.peek() {
                 connector = TERMINATING_CONNECTOR;
+                last_key_tracker[level] = true;
             }
             outstr.push('\n');
             // print the key
-            if level > 1 {
-                for _ in 0..level-1 {
-                    outstr = outstr + VERTICAL_EXTENDER + SPACING;
+            for lv in 0..level {
+                let is_last_key = *last_key_tracker.get(lv).unwrap();
+                if is_last_key {
+                    outstr.push_str(" ");
+                } else {
+                    outstr.push_str(VERTICAL_EXTENDER);
                 }
+                outstr.push_str(SPACING);
             }
             outstr.push_str(connector);
             outstr.push_str(key.as_str());
@@ -61,24 +66,37 @@ impl ParsedTOML {
             // First, check for recursive table
             let toml_val = table.get(key).unwrap();
             if let TOMLType::HTable(ref htable) = toml_val {
-                outstr = Self::tree_iter(htable, level+1, outstr);
+                outstr = Self::tree_iter(htable, level+1, outstr, last_key_tracker);
+                continue;
             } else if let TOMLType::DKTable(ref dktable) = toml_val {
-                outstr = Self::tree_iter(dktable, level+1, outstr)
+                outstr = Self::tree_iter(dktable, level+1, outstr, last_key_tracker);
+                continue;
+            } else if let TOMLType::InlineTable(ref inlinetab) = toml_val {
+                outstr = Self::tree_iter(inlinetab, level+1, outstr, last_key_tracker);
+                continue;
+            } else if let TOMLType::AoT(ref aot) = toml_val {
+                outstr.push_str(" (Arr_of_Tbls)"); 
+                for table in aot.iter() {
+                    outstr = Self::tree_iter(table, level+1, outstr, last_key_tracker);
+                }
+                continue;
             }
             // If we reach here, there's a value that we're just labeling instead of expanding.
             outstr.push('\n');
-            if level > 1 {
-                for _ in 0..level {
-                    outstr = outstr + VERTICAL_EXTENDER + SPACING;
+             for lv in 0..level+1 {
+                let is_last_key = *last_key_tracker.get(lv).unwrap();
+                if is_last_key {
+                    outstr.push_str(" ");
+                } else {
+                    outstr.push_str(VERTICAL_EXTENDER);
                 }
+                outstr.push_str(SPACING);
             }
             outstr.push_str(TERMINATING_CONNECTOR);
             match toml_val {
-                TOMLType::Array(a) => outstr.push_str("Array"),
-                TOMLType::AoT(_) => outstr.push_str("Array of Tables"),
-                TOMLType::InlineTable(_) => outstr.push_str("Inline Table"),
-                TOMLType::MultiStr(_) => outstr.push_str("Multi-line String"),
-                TOMLType::MultiLitStr(_) => outstr.push_str("Multi-line Literal String"),
+                TOMLType::Array(_) => outstr.push_str("ARRAY"),
+                TOMLType::MultiStr(_s) => outstr.push_str("MULTI-LINE STRING"),
+                TOMLType::MultiLitStr(_) => outstr.push_str("MULTI-LINE LITERAL STRING"),
                 TOMLType::LitStr(s) => outstr.push_str(s),
                 TOMLType::BasicStr(s) => outstr.push_str(s),
                 TOMLType::Bool(bl) => outstr.push_str(bl.to_string().as_str()),
@@ -88,9 +106,11 @@ impl ParsedTOML {
                 TOMLType::NaiveDateTime(dt) => outstr.push_str(dt.to_string().as_str()),
                 TOMLType::Date(dt) => outstr.push_str(dt.to_string().as_str()),
                 TOMLType::Time(dt) => outstr.push_str(dt.to_string().as_str()),
-                TOMLType::HTable(_) | TOMLType::DKTable(_) => (),
+                TOMLType::HTable(_) | TOMLType::DKTable(_) | TOMLType::InlineTable(_) | TOMLType::AoT(_) => (),
             }
         }
+        last_key_tracker.pop();  // remove this level's boolean
+        assert_eq!(last_key_tracker.len(), level);
         outstr
     }
 }
